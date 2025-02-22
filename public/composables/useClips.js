@@ -1,21 +1,33 @@
-// composables/useClips.js
 import { useRealTime } from './useRealTime.js';
 
 const clips = Vue.ref([]);
-const { emit, on } = useRealTime();
+const { emit, on, off } = useRealTime();
 
 export function useClips() {
-  on('add-clip', (clip) => {
-    if (!clips.value.some(c => c.id === clip.id)) {
-      clips.value.push(clip);
-    }
-  });
-  on('remove-clip', (id) => {
+  function handleAddClip(clip) {
+    if (!clips.value.some(c => c.id === clip.id)) clips.value.push(clip);
+  }
+  function handleRemoveClip(id) {
     clips.value = clips.value.filter(c => c.id !== id);
-  });
-  on('vote-clip', ({ clipId, direction }) => {
+  }
+  function handleVoteClip({ clipId, direction }) {
     const clip = clips.value.find(c => c.id === clipId);
     if (clip) clip.votes += direction === 'up' ? 1 : -1;
+  }
+  function handleSnapshot(history) {
+    clips.value = history.clips || [];
+  }
+
+  on('add-clip', handleAddClip);
+  on('remove-clip', handleRemoveClip);
+  on('vote-clip', handleVoteClip);
+  on('history-snapshot', handleSnapshot);
+
+  Vue.onUnmounted(() => {
+    off('add-clip', handleAddClip);
+    off('remove-clip', handleRemoveClip);
+    off('vote-clip', handleVoteClip);
+    off('history-snapshot', handleSnapshot);
   });
 
   function addClip(content, documentId) {

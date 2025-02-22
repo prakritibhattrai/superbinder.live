@@ -1,17 +1,27 @@
-// composables/useDocuments.js
 import { useRealTime } from './useRealTime.js';
 
 const documents = Vue.ref([]);
-const { emit, on } = useRealTime();
+const { emit, on, off } = useRealTime();
 
 export function useDocuments() {
-  on('add-document', (doc) => {
-    if (!documents.value.some(d => d.id === doc.id)) {
-      documents.value.push(doc);
-    }
-  });
-  on('remove-document', (id) => {
+  function handleAddDocument(doc) {
+    if (!documents.value.some(d => d.id === doc.id)) documents.value.push(doc);
+  }
+  function handleRemoveDocument(id) {
     documents.value = documents.value.filter(d => d.id !== id);
+  }
+  function handleSnapshot(history) {
+    documents.value = history.documents || [];
+  }
+
+  on('add-document', handleAddDocument);
+  on('remove-document', handleRemoveDocument);
+  on('history-snapshot', handleSnapshot);
+
+  Vue.onUnmounted(() => {
+    off('add-document', handleAddDocument);
+    off('remove-document', handleRemoveDocument);
+    off('history-snapshot', handleSnapshot);
   });
 
   function addDocument(file) {

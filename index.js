@@ -13,6 +13,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/assets", express.static(path.join(__dirname, "public/assets")));
 app.use("/composables", express.static(path.join(__dirname, "public/composables")));
 app.use("/components", express.static(path.join(__dirname, "public/components")));
+
 app.use(express.static(path.join(__dirname, "public"))); // Serve other static assets
 
 // Middleware to ensure proper MIME types for .js files

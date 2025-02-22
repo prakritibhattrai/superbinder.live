@@ -92,10 +92,8 @@ export default {
     const expanded = Vue.ref({});
     const docContent = Vue.ref(null);
 
-    // Computed selected document
     const selectedDoc = Vue.computed(() => documents.value.find(doc => doc.id === selectedDocId.value));
 
-    // Advanced keyword matching
     function performSearch() {
       if (searchQuery.value.trim()) {
         searchDocuments(searchQuery.value);
@@ -104,7 +102,6 @@ export default {
       }
     }
 
-    // Highlight matched keywords
     function highlightMatch(text) {
       const keywords = searchQuery.value.toLowerCase().split(/\s+/).filter(k => k);
       let highlighted = text;
@@ -115,34 +112,27 @@ export default {
       return highlighted;
     }
 
-    // Render document content (preserve HTML if present)
     function renderContent(content) {
       return content.includes('<') ? content : `<p>${content}</p>`;
     }
 
-    // Toggle search result expansion
     function toggleExpand(index) {
       Vue.set(expanded.value, index, !expanded.value[index]);
     }
 
-    // View full document and scroll to match
     function viewFullDoc(docId, segment) {
       selectedDocId.value = docId;
       Vue.nextTick(() => {
         const contentEl = docContent.value;
-        const matchIndex = selectedDoc.value.content.indexOf(segment);
-        if (matchIndex >= 0) {
-          contentEl.scrollTop = matchIndex / selectedDoc.value.content.length * contentEl.scrollHeight;
+        if (contentEl) {
+          const matchIndex = selectedDoc.value.content.indexOf(segment);
+          if (matchIndex >= 0) {
+            contentEl.scrollTop = matchIndex / selectedDoc.value.content.length * contentEl.scrollHeight;
+          }
         }
       });
     }
 
-    // Add clip from search result
-    // function addClip(segment, docId) {
-    //   addClip(segment, docId);
-    // }
-
-    // Clip selected text from full document
     function clipSelectedText() {
       if (selectedText.value && selectedDocId.value) {
         addClip(selectedText.value, selectedDocId.value);
@@ -150,21 +140,39 @@ export default {
       }
     }
 
-    // Capture selected text
-    Vue.onMounted(() => {
-      document.addEventListener('selectionchange', () => {
-        const selection = window.getSelection();
-        if (selection.rangeCount && docContent.value.contains(selection.anchorNode)) {
-          selectedText.value = selection.toString().trim();
-        } else {
-          selectedText.value = '';
-        }
-      });
-    });
-
     function scrollToTop() {
       if (docContent.value) docContent.value.scrollTop = 0;
     }
+
+    // Define handleSelectionChange at the top level
+    function handleSelectionChange() {
+      const selection = window.getSelection();
+      if (selection.rangeCount && docContent.value && docContent.value.contains(selection.anchorNode)) {
+        selectedText.value = selection.toString().trim();
+      } else {
+        selectedText.value = '';
+      }
+    }
+
+    // Safe selection change handler
+    Vue.onMounted(() => {
+      const checkAndAddListener = () => {
+        if (docContent.value) {
+          document.removeEventListener('selectionchange', handleSelectionChange); // Prevent duplicates
+          document.addEventListener('selectionchange', handleSelectionChange);
+        } else {
+          Vue.nextTick(() => {
+            setTimeout(checkAndAddListener, 100); // Check again after 100ms
+          });
+        }
+      };
+
+      checkAndAddListener();
+    });
+
+    Vue.onUnmounted(() => {
+      document.removeEventListener('selectionchange', handleSelectionChange);
+    });
 
     return {
       documents,

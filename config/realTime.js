@@ -3,16 +3,27 @@ const { Server } = require('socket.io');
 const { v4: uuidv4 } = require('uuid');
 const { handlePrompt } = require('./handleAiInteractions');
 
-const channels = new Map(); // { channelName: { users: { userUuid: { displayName, color } }, sockets: { userUuid: socket } } }
-const realTimeClients = {}; // { userUuid: socket }
-const messageLog = []; // Simple in-memory log for debugging
+const channels = new Map();
+const realTimeClients = {};
+
+function validateJoinData(data) {
+  return data && data.userUuid && data.displayName && data.channelName;
+}
+
+function validateLeaveData(data) {
+  return data && data.userUuid && data.channelName;
+}
+
+function validateMessage(data) {
+  return data && data.userUuid && data.channelName && data.type && data.timestamp;
+}
 
 function createRealTimeServers(server, corsOptions) {
   const io = new Server(server, {
-    cors: corsOptions,
+    cors: corsOptions || { origin: '*' },
     pingInterval: 5000,
     pingTimeout: 10000,
-    maxHttpBufferSize: 1e8, // 100MB for large documents
+    maxHttpBufferSize: 1e8,
   });
 
   io.on('connection', (socket) => {
@@ -23,23 +34,45 @@ function createRealTimeServers(server, corsOptions) {
         socket.emit('message', { type: 'error', message: 'Invalid join data', timestamp: Date.now() });
         return;
       }
-
+    
       const { userUuid, displayName, channelName } = data;
       socket.join(channelName);
-      socket.userUuid = userUuid; // Store for disconnect handling
-
+      socket.userUuid = userUuid;
+    
       if (!channels.has(channelName)) {
         channels.set(channelName, { users: {}, sockets: {} });
       }
-
+    
       const channel = channels.get(channelName);
+      if (channel.users[userUuid]) {
+        console.log(`${displayName} (${userUuid}) rejoined channel ${channelName}, updating socket`);
+        delete realTimeClients[userUuid];
+      }
+    
       const color = getRandomColor();
-      channel.users[userUuid] = { displayName, color };
+      channel.users[userUuid] = { displayName, color, joinedAt: Date.now() };
       channel.sockets[userUuid] = socket;
       realTimeClients[userUuid] = socket;
-
+    
       console.log(`${displayName} (${userUuid}) joined channel ${channelName}`);
       broadcastToChannel(channelName, 'user-list', { users: channel.users });
+    
+      // Broadcast user-joined notification to all users in the channel
+      broadcastToChannel(channelName, 'user-joined', {
+        userUuid,
+        displayName,
+        timestamp: Date.now(),
+      });
+    
+      const seniorUser = getSeniorUser(channelName);
+      if (seniorUser && seniorUser.userUuid !== userUuid) {
+        channel.sockets[seniorUser.userUuid].emit('message', {
+          type: 'request-history',
+          requesterUuid: userUuid,
+          channelName,
+          timestamp: Date.now(),
+        });
+      }
     });
 
     socket.on('leave-channel', (data) => {
@@ -75,14 +108,17 @@ function handleMessage(data, socket) {
     return;
   }
 
-  messageLog.push({ type, userUuid, channelName, timestamp }); // Log for debugging
-  if (messageLog.length > 1000) messageLog.shift(); // Limit log size
-
   switch (type) {
     case 'heartbeat':
-      if (data.type === 'ping') {
-        socket.emit('message', { type: 'pong', timestamp: Date.now() });
-      }
+      if (data.type === 'ping') socket.emit('message', { type: 'pong', timestamp: Date.now() });
+      break;
+    case 'history-snapshot':
+      sendToClient(data.requesterUuid, 'history-snapshot', data.history);
+      break;
+    case 'request-history':
+      break;
+    case 'user-joined':
+      broadcastToChannel(channelName, type, data); // Ensure user-joined broadcasts to all
       break;
     case 'add-document':
     case 'remove-document':
@@ -100,7 +136,7 @@ function handleMessage(data, socket) {
       handleSynthesis(data, channelName);
       break;
     case 'agent-message':
-      handleAgentMessage(data, channelName); // Stub for AI chat
+      handleAgentMessage(data, channelName);
       break;
     default:
       console.warn(`Unknown message type: ${type}`);
@@ -111,7 +147,11 @@ function handleMessage(data, socket) {
 function broadcastToChannel(channelName, type, data) {
   if (channels.has(channelName)) {
     const channel = channels.get(channelName);
-    const payload = { type, timestamp: data.timestamp, ...data };
+    const payload = { 
+      type, 
+      timestamp: data.timestamp || Date.now(), // Ensure timestamp exists
+      ...data 
+    };
     for (const userUuid in channel.sockets) {
       channel.sockets[userUuid].emit('message', payload);
     }
@@ -145,26 +185,20 @@ function cleanupUser(channelName, userUuid, socket) {
   }
 }
 
-// Validation functions
-function validateJoinData(data) {
-  return data && data.userUuid && data.displayName && data.channelName;
+function getSeniorUser(channelName) {
+  if (!channels.has(channelName)) return null;
+  const users = channels.get(channelName).users;
+  return Object.entries(users)
+    .reduce((senior, [uuid, user]) => 
+      !senior || user.joinedAt < senior.joinedAt ? { userUuid: uuid, ...user } : senior, null);
 }
 
-function validateLeaveData(data) {
-  return data && data.userUuid && data.channelName;
-}
-
-function validateMessage(data) {
-  return data && data.userUuid && data.channelName && data.type && data.timestamp;
-}
-
-// AI synthesis handler
 async function handleSynthesis(data, channelName) {
   const { userUuid, synthesis } = data;
   const promptConfig = {
     uuid: userUuid,
     session: synthesis.id,
-    model: { provider: 'openai', model: 'gpt-4' }, // Placeholder
+    model: { provider: 'openai', model: 'gpt-4' },
     temperature: 0.7,
     systemPrompt: 'Summarize the provided clips concisely',
     userPrompt: synthesis.prompt,
@@ -183,9 +217,7 @@ async function handleSynthesis(data, channelName) {
   });
 }
 
-// AI agent chat handler (stub)
 function handleAgentMessage(data, channelName) {
-  // TODO: Integrate with AI logic for chat participation
   broadcastToChannel(channelName, 'agent-message', data);
 }
 
