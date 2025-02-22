@@ -14,7 +14,7 @@ export const useConfigs = () => {
   // Key Messages grouped by category
   const getConfigs = async () => {
     try {
-      env.value = await axios.get("/api/configs");
+      env.value = await axios.get("/api/configs").data.payload;
 
       if (env.value.data?.payload?.models)
         models.value = env.value.data.payload.models;

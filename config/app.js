@@ -22,7 +22,7 @@ app.use(express.urlencoded({ extended: true, limit: "100mb" })); //The largest i
 
 //Select the default port
 const port = process.env.PORT || 3000;
-
+const apiUrl = process.env.API_URL || 'http://localhost';
 //Bring in the logger
 //const expressLogger = require("../middleware/expressLogger");
 //app.use(expressLogger);
@@ -30,7 +30,7 @@ const port = process.env.PORT || 3000;
 //Create HTTP Server
 const server = http.createServer(app);
 server.listen( port, '0.0.0.0', () =>
-  console.log(`SuperBinder.live - Node.js service listening at http://localhost:${port}`)
+  console.log(`SuperBinder.live - Node.js service listening at ${apiUrl}`)
 );
 
 //Establish both websocket and Socket.IO servers
