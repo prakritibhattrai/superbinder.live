@@ -1,238 +1,236 @@
-import { useConfigs } from "./useConfigs.js";
+// useRealTime.js
+import { useConfigs } from './useConfigs.js';
+import eventBus from './eventBus.js';
+
 const { env } = useConfigs();
-// const env = Vue.ref(
-//     {WEBSOCKET_URL:"ws://localhost:3000"},
-//     {API_URL :"htto://localhost:3000"},
-// )   
-let ws = null; //Websocket protocol client
-let socket = null; // Socket.io client instance
-let wsUuid = Vue.ref(null);
-let useSocketIo = Vue.ref(false); // State to determine if we should use Socket.io
+let socket = null;
+const userUuid = Vue.ref(localStorage.getItem('userUuid') || null);
+const displayName = Vue.ref(localStorage.getItem('displayName') || '');
+const channelName = Vue.ref(localStorage.getItem('channelName') || '');
+const isConnected = Vue.ref(false);
+const activeUsers = Vue.ref({});
+const connectionError = Vue.ref(null);
+const lastMessageTimestamp = Vue.ref(0); // Track message ordering
 
-let pingInterval;
-let pongTimeout;
-let sessions = Vue.ref({}); // Sessions - Does not need a rework, would work across all
-
-// Additional Computed
-let sessionsContent = Vue.computed(() => {
-    return Object.keys(sessions.value).map((key) => {
-        return {
-            content: sessions.value[key].completedMessage || sessions.value[key].partialMessage || '',
-            label: 'Socket',
-            sessionId: key,
-            extracts: extractData(sessions.value[key]?.completedMessage || sessions.value[key]?.partialMessage || '')
-        };
-    });
-});
+// Reactive session info
+const sessionInfo = Vue.computed(() => ({
+  userUuid: userUuid.value,
+  displayName: displayName.value,
+  channelName: channelName.value,
+  isConnected: isConnected.value,
+  error: connectionError.value,
+}));
 
 export function useRealTime() {
-    //Websockets
-    async function websocketConnection() {
-        clearInterval(pingInterval);
-        clearTimeout(pongTimeout);
+  // Initialize or reconnect to Socket.io
+  function connect(channel, name) {
+    if (!userUuid.value) {
+      userUuid.value = uuidv4();
+      localStorage.setItem('userUuid', userUuid.value);
+    }
 
-        if (!ws) {
-            ws = new WebSocket(env.value.WEBSOCKET_URL);
-            ws.addEventListener('open', commonHandleOpen);
-            ws.addEventListener('message', commonHandleMessage);
-            ws.addEventListener('close', commonHandleClose);
-            ws.addEventListener('error', commonHandleError);
+    displayName.value = name;
+    channelName.value = channel;
+    localStorage.setItem('displayName', name);
+    localStorage.setItem('channelName', channel);
+
+    if (!socket || !socket.connected) {
+      socket = io(env.value.API_URL, {
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 3000,
+        reconnectionDelayMax: 5000,
+        randomizationFactor: 0.5,
+        timeout: 20000,
+        transports: ['websocket'],
+      });
+
+      socket.on('connect', () => {
+        isConnected.value = true;
+        connectionError.value = null;
+        console.log(`Connected to server with UUID: ${userUuid.value}`);
+        socket.emit('join-channel', {
+          userUuid: userUuid.value,
+          displayName: displayName.value,
+          channelName: channelName.value,
+        });
+        startHeartbeat();
+      });
+
+      socket.on('disconnect', (reason) => {
+        isConnected.value = false;
+        stopHeartbeat();
+        console.log(`Disconnected from server: ${reason}`);
+        if (reason === 'io server disconnect' || reason === 'transport close') {
+          connectionError.value = `Disconnected: ${reason}`;
+          reconnect();
         }
+      });
+
+      socket.on('connect_error', (error) => {
+        isConnected.value = false;
+        connectionError.value = `Connection failed: ${error.message}`;
+        console.error('Connection error:', error);
+      });
+
+      socket.on('message', (data) => {
+        const parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+        handleMessage(parsedData);
+      });
+    }
+  }
+
+  // Disconnect from the server
+  function disconnect() {
+    if (socket && socket.connected) {
+      socket.emit('leave-channel', {
+        userUuid: userUuid.value,
+        channelName: channelName.value,
+      });
+      socket.disconnect();
+      isConnected.value = false;
+      stopHeartbeat();
+      socket = null;
+      connectionError.value = null;
+    }
+  }
+
+  // Emit a message to the server
+  function emit(event, data) {
+    if (socket && socket.connected) {
+      const payload = {
+        userUuid: userUuid.value,
+        channelName: channelName.value,
+        timestamp: Date.now(),
+        type: event, // Align with server-side expectation
+        ...data,
+      };
+      socket.emit('message', payload);
+    } else {
+      console.error('Socket not connected. Queuing message:', event, data);
+      connectionError.value = 'Cannot send: Not connected';
+      // TODO: Implement message queue for offline resilience
+    }
+  }
+
+  // Manual reconnect attempt
+  function reconnect() {
+    if (!isConnected.value) {
+      console.log('Attempting to reconnect...');
+      disconnect();
+      connect(channelName.value, displayName.value);
+    }
+  }
+
+  // Heartbeat to keep connection alive
+  let heartbeatInterval = null;
+  function startHeartbeat() {
+    stopHeartbeat();
+    heartbeatInterval = setInterval(() => {
+      emit('heartbeat', { type: 'ping' });
+    }, 5000);
+  }
+
+  function stopHeartbeat() {
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+      heartbeatInterval = null;
+    }
+  }
+
+  // Handle incoming socket messages and route via eventBus
+  function handleMessage(data) {
+    if (!data.type || !data.timestamp) {
+      console.warn('Invalid message format:', data);
+      return;
     }
 
-    //Socket IO
-    function socketIoConnection() {
-        socket = io(env.value.API_URL,
-
-            {
-                reconnection: true,             // whether to reconnect automatically
-                reconnectionAttempts: Infinity, // number of reconnection attempts before giving up
-                reconnectionDelay: 3000,        // initial delay in ms to start reconnections
-                reconnectionDelayMax: 5000,     // maximum delay in ms between reconnection attempts
-                randomizationFactor: 0.5        // randomization factor for delay calculation
-            }
-        );
-        socket.on('connect', commonHandleOpen);
-        socket.on('message', commonHandleMessage);
-        socket.on('disconnect', commonHandleClose);
-        socket.on('connect_error', commonHandleError);
+    // Prevent processing older messages
+    if (data.timestamp <= lastMessageTimestamp.value) {
+      console.log('Ignoring outdated message:', data);
+      return;
     }
+    lastMessageTimestamp.value = data.timestamp;
 
-    /* COMMON FUNCTIONS */
-    function commonHandleOpen() {
-        console.log('Connection opened');
-        pingInterval = setInterval(() => {
-            sendPing();
-        }, 5000);
+    console.log(`Received ${data.type} from ${data.userUuid || 'server'}:`, data);
+
+    switch (data.type) {
+      case 'user-list':
+        activeUsers.value = data.users;
+        eventBus.$emit('user-list', data.users);
+        break;
+      case 'add-document':
+        eventBus.$emit('add-document', data.document);
+        break;
+      case 'remove-document':
+        eventBus.$emit('remove-document', data.documentId);
+        break;
+      case 'add-clip':
+        eventBus.$emit('add-clip', data.clip);
+        break;
+      case 'remove-clip':
+        eventBus.$emit('remove-clip', data.clipId);
+        break;
+      case 'vote-clip':
+        eventBus.$emit('vote-clip', { clipId: data.clipId, direction: data.direction });
+        break;
+      case 'transcription-update':
+        eventBus.$emit('transcription-update', { userUuid: data.userUuid, sentence: data.sentence });
+        break;
+      case 'flag-sentence':
+        eventBus.$emit('flag-sentence', { userUuid: data.userUuid, sentenceId: data.sentenceId });
+        break;
+      case 'add-synthesis':
+        eventBus.$emit('add-synthesis', data.synthesis);
+        break;
+      case 'remove-synthesis':
+        eventBus.$emit('remove-synthesis', data.synthesisId);
+        break;
+      case 'chat-draft':
+        eventBus.$emit('chat-draft', { userUuid: data.userUuid, text: data.text });
+        break;
+      case 'chat-message':
+        eventBus.$emit('chat-message', { userUuid: data.userUuid, text: data.text, color: data.color });
+        break;
+      case 'agent-message':
+        eventBus.$emit('agent-message', { agentId: data.agentId, text: data.text, color: data.color });
+        break;
+      case 'pong':
+        console.log('Heartbeat pong received');
+        break;
+      case 'error':
+        console.error('Server error:', data.message);
+        connectionError.value = data.message;
+        break;
+      default:
+        console.warn('Unhandled message type:', data.type);
     }
+  }
 
-    function commonHandleMessage(data) {
-        if (typeof data === 'string') {
-            // WebSocket message received as a string
-            data = JSON.parse(data);
-        }
+  // Expose event listener method
+  function on(event, callback) {
+    eventBus.$on(event, callback);
+  }
 
-        // If the message contains a uuid, store it in the ref variable
-        if (data.uuid) {
-            wsUuid.value = data.uuid;
-            console.log('Received a UUID', wsUuid.value);
-        }
+  // Cleanup listener method (optional)
+  function off(event, callback) {
+    eventBus.$off(event, callback);
+  }
 
-        // Handle the rest of the message processing
-        processMessage(data);
-    }
-
-    function processMessage(data) {
-        try {
-            if (data.session && sessions.value[data.session]) {
-                // Check if the partialMessage exists for the session, if not create it
-                if (!sessions.value[data.session].partialMessage) {
-                    sessions.value[data.session].partialMessage = '';
-                }
-
-                if (data.type === 'EOM') {
-                    sessions.value[data.session].completedMessage = sessions.value[data.session].messages.join('');
-
-                    // Reset the partial message
-                    sessions.value[data.session].messages = []; // Reset messages for the session
-                    sessions.value[data.session].partialMessage = '';
-                    sessions.value[data.session].status = 'complete';
-                } else if (data.type === 'ERROR') {
-                    console.log('Error in LLM response:', data);
-
-                    var errorMessage = 'Error: ';
-
-                    sessions.value[data.session].status = 'waiting'; //Set a waiting status, to retry once available.
-                    sessions.value[data.session].errorMessage = errorMessage + data.message;
-
-                    // Clean up messages to avoid memory bloat
-                    sessions.value[data.session].messages = []; // Reset messages for the session
-                    sessions.value[data.session].partialMessage = '';
-                    sessions.value[data.session].completedMessage = '';
-                } else {
-                    // Update the partial message with the new fragment
-                    sessions.value[data.session].messages.push(data.message);
-                    sessions.value[data.session].partialMessage += data.message;
-                    sessions.value[data.session].status = 'inProgress';
-                }
-            }
-        } catch (error) {
-            console.log('Error with websocket message', error);
-        }
-    }
-
-    function commonHandleClose() {
-        console.log('Connection closed');
-        wsUuid.value = null;
-
-        clearInterval(pingInterval);
-        clearTimeout(pongTimeout);
-
-        // Remove event listeners
-        if (ws) {
-            ws.removeEventListener('open', commonHandleOpen);
-            ws.removeEventListener('message', commonHandleMessage);
-            ws.removeEventListener('close', commonHandleClose);
-            ws.removeEventListener('error', commonHandleError);
-            ws = null;
-        }
-        if (socket) {
-            socket.off('connect', commonHandleOpen);
-            socket.off('message', commonHandleMessage);
-            socket.off('disconnect', commonHandleClose);
-            socket.off('connect_error', commonHandleError);
-            socket = null;
-        }
-
-        // retryConnection();
-    }
-
-    function commonHandleError(event) {
-        console.error('Connection error:', event);
-    
-        // Clear the current connection instances
-        if (ws) {
-            ws = null;
-        } else if (socket) {
-            socket = null;
-        }
-    
-        // Trigger a retry which will alternate to the other connection method
-        // retryConnection();
-    }
-
-    function sendPing() {
-        if (ws) {
-            ws.send(JSON.stringify({ type: 'ping' }));
-        } else if (socket && socket.connected) {
-            socket.emit('message', JSON.stringify({ type: 'ping' }));
-        }
-    }
-
-    //Retry Connection
-
-    function retryConnection() {
-        console.log('Retrying connection...');
-        setTimeout(() => {
-            if (useSocketIo.value) {
-                // If the flag is set to use Socket.io, attempt that connection
-                console.log('Attempting to connect with Socket.io...');
-                socketIoConnection();
-            } else {
-                // Otherwise, attempt a WebSocket connection
-                console.log('Attempting to connect with WebSocket...');
-                websocketConnection();
-            }
-            // Toggle the flag to alternate on the next retry
-            useSocketIo.value = !useSocketIo.value;
-        }, 3000); // Retry after 3 seconds
-    }
-
-    // Send to Server function
-    function sendToServer(uuid, session, model, temperature, systemPrompt, userPrompt, messageHistory, type, useJson) {
-        if (ws) {
-            let wsSendVars = { token: null, uuid, session, model, temperature, systemPrompt, userPrompt, messageHistory, type, useJson };
-            console.log("wsSendVars", wsSendVars)
-            ws.send(JSON.stringify(wsSendVars));
-        } else if (socket && socket.connected) {
-            let socketSendVars = { token: null, uuid, session, model, temperature, systemPrompt, userPrompt, messageHistory, type, useJson };
-            socket.emit('message', JSON.stringify(socketSendVars));
-        }
-    }
-
-    //Register and Unregister
-    function registerSession(session, persona, callback) {
-        sessions.value[session] = { callback, messages: [], status: 'idle', partialMessage: '', completedMessage: '', persona: persona };
-    }
-
-    function unregisterSession(session) {
-        console.log('Deleted session', session);
-        clearSessionData(session);
-        delete sessions.value[session];
-    }
-
-    function clearSessionData(sessionId) {
-        if (sessions.value[sessionId]) {
-            sessions.value[sessionId].messages = [];
-            sessions.value[sessionId].partialMessage = '';
-            sessions.value[sessionId].completedMessage = '';
-            // Any other cleanup that is needed for a session
-        }
-    }
-
-    return {
-        ws,
-        socket,
-        wsUuid,
-        useSocketIo,
-        sessions,
-        sessionsContent,
-        retryConnection,
-        websocketConnection,
-        socketIoConnection,
-
-        sendToServer,
-        registerSession,
-        unregisterSession
-    };
+  return {
+    socket,
+    userUuid,
+    displayName,
+    channelName,
+    isConnected,
+    activeUsers,
+    connectionError,
+    sessionInfo,
+    connect,
+    disconnect,
+    emit,
+    reconnect,
+    on,
+    off,
+  };
 }

@@ -1,6 +1,6 @@
 import { useConfigs } from "./composables/useConfigs.js";
 import { useModels } from "./composables/useModels.js";
-import { useRealTime } from "./composables/useRealTime.js";
+// import { useRealTime } from "./composables/useRealTime.js";
 import { useTextToSpeech } from "./composables/useTextToSpeech.js";
 import router from "../router/index.js";
 
@@ -94,7 +94,7 @@ export default {
     setup() {
         const { fetchServerModels } = useModels();
         const { getConfigs } = useConfigs();
-        const { socketIoConnection } = useRealTime();
+        // const { socketIoConnection } = useRealTime();
         const { loadVoices } = useTextToSpeech();
 
         const fileInput = Vue.ref(null);
@@ -117,7 +117,7 @@ export default {
             await loadVoices();
             await getConfigs();
             await fetchServerModels();
-            await socketIoConnection();
+            // await socketIoConnection();
         });
 
         function handleFileUpload(event) {

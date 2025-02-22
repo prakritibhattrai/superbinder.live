@@ -1,0 +1,47 @@
+Now I want to build the main layout component for the app called /components/Binder.js which I've already created as an empty file.
+Here is how I want it to work:
+
+Binder.js is the main parent component which we will add most of the other components to.
+
+When the user navigates to this component, their session will be given a unique uuid and connected to the socket.io. The user will initially be prompted to enter a display name and enter a channel name. If the channel name hasn't been registered in the backend before, it will be created as a new channel. If it has been registered before, it will allow the user to join that channel for their participation. Both can be saved into localStorage as neither are really sensitive. Since there is no login required for this, there will be no JWT session token or cookie saved for the user; any user with the channel name can join the channel.
+
+Once a username and channel name have been added, the rest of the Binder.js interface is then displayed.
+
+The user interface will use Tailwind for a reactive/responsive layout. 
+
+In desktop mode, it will have 3 column elements, which will each become full width in mobile mode. On the left, it will have an expanding side menu for documents. These are any text, word, PDF, image documents that the users add. These documents will be specific to the session, but if one user adds a document, it needs to get synced via the socketio for all users to be able to access the document. This will be part of the useRealTime.js composable which will be retrofitting to serve this.
+
+The second larger column will contain the viewer. The viewer will have several tabs across the top for its various modes, Full, Clips, Transcribe, and Synthesize. 
+In Full mode, the user will be able to display full text, word, pdf files. In viewer mode, the user will be able to scroll up and down but will also have a full width search bar across the top to search for anything he likes. When the user is searching, the ssearch will conduct a keyword matching throughout the document. This will be an advanced keyword matching, meaning that it will match words proximally and even if there is punctuation and spaces and other words between. FOr example, if the user enters
+"weather forecast Maine", this should reasonably match with "Hey folks, I am here with the weather desk, and the forecast today in Maine looks gusty". It would also match on different orders to the words like "Maine's news today shows a forecast for some gusty weather!". When a match is found, the viewer needs to isolate on either side of the match and return a segment of that matched content. All the matches will get queued up in a nice visual list in collapsed mode. When the user clicks on the expand button on that row, it will expand to a paragraph size, and when the user clicks the document, it expands the full document and is scrolled so that isolated match is what fills the screen, with the key words highlighted in the sentence. If the user likes the suggestion, there is also going to be a scissors icon which will create a Clip of that for the Clips mode of the Viewer. The user also needs to be able to just select any amount of text in the document and hit Clip and it will isolate that. The content displayed in the View must maintain any of its html / docx / PDF layout and look and feel, and the clips must capture this as well, not just the text, so that the clip contains the look and feel of the tables or elements clipped.
+
+In Clips mode, we will have cards which displays the clippings that the user has isolated. Clips will be cards 3 columns wide, arranged left to right and top to bottom sequentially. Clips will have a snippet of the text, as well as an up vote and down vote button. The up and down votes change in real time across the various users. Clicking on a clip jumps you to the precise spot in the various documents that you're looking for. Each clip can be deleted when iti s no longer needed or relevant.
+
+In Transcribe, this will be a real-time transcription from one or more devices. Here, there will be a Listen/Record button which will leverage the browser's recorder capabilities on mobile or on desktop to capture audio and create a transcription. Each participating device in the SuperBinder can initiate a transcription. Of course, if multiple devices are physically together they may receive the same information, and duplicate this, which is why we separate the transcription text by participant. Ideally, only 1-2 devices will be transcribing, so we would see these as just 1-2 columns in the Transcribe part of the Viewer. If there are more, than each transcription becomes a card. As the transcriptions are getting generated, they are getting rendered into sentences. This is how the data will come in, via the websockets, as the DeepGram API returns the text sentences at a time. For each sentence, the users will have the ability to flag a sentence of interest and when this happens, a matching search will kick of to try to find the best matches in the documents and to create clips. If clips are found which match this sentence, then they will get added to that sentence in the transcription with a Clips icon and the number. Clicking on that Clips icon will shift the user to the clips section to see a filtered set of clips which relate just to this question. Clicking on the Synthesize button (maybe an AI icon) will cause the question or sentence from the transcript and the clips found to be handed to the Synthesize agent to prepare to answer the question.
+
+In Synthesize, an AI Agent will be working to evaluate the source material behind the question and clips and craft a narrative for this information which has a nice and consistent flow. A specific user prompt and system prompt will be defined and configurable for this Agent so it knows the tone and context of its summary. Each synthesis output can be deleted as well when it is no longer needed.
+
+The third column on the right side is the real-time chat between the multiple participating humans and the AI. Here, humans can see each other typing their messages in draft mode in real time (a kind of grey box for their spot), and then when they hit enter, it becomes solid (a lightly coloured box, with a predefined colour for each speaker that is different / randomly assigned). Multiple users can type concurrently and post messages, and the content scrolls up like a group chat. However, there are also non-human users in the chat as well, AI Agents which are also reading the chat and participating / taking turns adding information based on their role. For example, 
+
+Human 1: I think this question is about our annual report and our Data program.
+Human 2: Let me see if we have this.
+Agent 1: I've scanned your annual report and added 3 clips about your data program in to the Clips viewer.
+Human 3: Yes, this is what I wanted.
+
+In the chat, the users can also define their own display name across the top, which will let them @displayname each other. 
+
+So thus far, binder is allowing people to 
+a) add unlimited documents and each gain access to them
+b) View documents, search documents, create clips, view clips, upvote or downvote clips, transcribe audio into a full narrative, select segments of the transcription for a clip search, and to synthesize the results, and to view the synthesis window which has these results which all queue up.
+c) conduct real-time chat in the right window amongst multiple humans and multiple AI agents.
+
+To make all this work, we are going to need a wide range of new Vue.js components to build this in a modular way. 
+We will need to leverage and enhance the useRealTime.js to create channels with unique and distinct names which will sync all the users together, and add a wide range of message types so the websocket traffic results in the correct elements getting updated. We will need to store the outputs into time-based sequences, for files, for clips, transcriptions, synthesis, and chat histories, and to handle the addition, deletion of cards, as well as upvoting and downvoting.
+We will also use the sockets to relay the output from DeepGram so the transcription outputs which come from audio stream inputs are handled and grouped by device.
+We will also use the sockets to capture the LLM agent outputs and to drop these in chats.
+
+So, as the first step, make me a list of all the components that will be needed for this interface.
+Make me a list of the composables required (in addition to useRealTime.js for socket protocols) which will allow us to maintain the state of all these elements. Since we need to manage the communication centrally, I would like most components to leverage global composable variables and allow direct mutation without needing getter or setter functions. 
+Make me a list of all the various socket elements needed. Firstly, we will have a unique UUID for the user, and the user name, and the channel. This will be maintained in the server side in an active inventory of users and channels in the sessions. The uuid will be what determines the routing of the messages. All messages should broadcast to all users within the channel and never outside the channel. However, when the message comes with 'chat' or 'agent' or 'upVote' attributes, we will know what we need to update. This socket management is doubtlessly the most complex part, and needs to be given significant thought to ensure synchronization across all these attributes across so many users. 
+
+Let's get started.

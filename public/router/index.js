@@ -1,12 +1,20 @@
 import Landing from "../components/Landing.js";
+import Binder from "../components/Binder.js";
 
 const routes = [
   {
     path: "/",
     component: Landing,
     name: "landing",
-    // requiresAuth:true,
+  },
+
+  {
+    path: "/binder",
+    component: Binder,
+    name: "binder",
+    // requiresAuth:true, //Setup your own auth if you want SSO/Logins
   }
+
 ];
 
 const router = VueRouter.createRouter({

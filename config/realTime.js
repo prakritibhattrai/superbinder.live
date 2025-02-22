@@ -1,200 +1,201 @@
 // realtime.js
-/*
-Real-time implements dual Websockets and Socket.io protocols as each offers its own benefits
-WebSockets are native, while Socket.io enables various protocols. Websockets are often blocked by VPN policy, making them limited in their audience
-The client app will select whichever protocol it prefers
+const { Server } = require('socket.io');
+const { v4: uuidv4 } = require('uuid');
+const { handlePrompt } = require('./handleAiInteractions');
 
-*/
-const WebSocket = require("ws");
-const { Server } = require("socket.io");
-const { v4: uuidv4 } = require("uuid");
-const { handlePrompt } = require("./handleAiInteractions"); // Import the handlePrompt function
+const channels = new Map(); // { channelName: { users: { userUuid: { displayName, color } }, sockets: { userUuid: socket } } }
+const realTimeClients = {}; // { userUuid: socket }
+const messageLog = []; // Simple in-memory log for debugging
 
-const realTimeClients = {};
-const { authenticateAndDecode } = require("../middleware/verify");
+function createRealTimeServers(server, corsOptions) {
+  const io = new Server(server, {
+    cors: corsOptions,
+    pingInterval: 5000,
+    pingTimeout: 10000,
+    maxHttpBufferSize: 1e8, // 100MB for large documents
+  });
 
-async function verifyTokenAndAccount(token) {
-  try {
-    const tokenDecoded = authenticateAndDecode(token);
-    if (!tokenDecoded) return null;
-    return null;
-    // return await Account.findOne({ username: tokenDecoded.username });
-  } catch (error) {
-    throw error;
-  }
-}
+  io.on('connection', (socket) => {
+    console.log(`Client connected: ${socket.id}`);
 
-function buildPromptConfig(data, account) {
-  return {
-    account,
-    uuid: data.uuid,
-    session: data.session,
-    model: data.model ,
-    temperature: data.temperature,
-    systemPrompt: data.systemPrompt,
-    userPrompt: data.userPrompt,
-    messageHistory: data.messageHistory,
-    useJson: data.useJson || false,
-  };
-}
-
-// Create a WebSocket server
-const createRealTimeServers = (server, corsOptions) => {
-  // const wss = new WebSocket.Server({ server });
-
-  // const wss = new WebSocket.Server({ noServer: true });
-  const io = new Server(server, { cors: corsOptions });
-
-  // // Listen to the 'upgrade' event on the HTTP server
-  // server.on("upgrade", (request, socket, head) => {
-  //   // Check whether the upgrade request is for Socket.io
-  //   if (request.url.startsWith("/socket.io/")) {
-  //     // Pass the upgrade request to the Socket.io server
-  //     io.engine.handleUpgrade(request, socket, head, (socket) => {
-  //       io.engine.emit("connection", socket, request);
-  //     });
-  //   } else {
-  //     // Otherwise, pass the upgrade request to the 'ws' WebSocket server
-  //     wss.handleUpgrade(request, socket, head, (ws) => {
-  //       wss.emit("connection", ws, request);
-  //     });
-  //   }
-  // });
-
-  // wss.on("connection", (ws) => {
-  //   ws.uuid = uuidv4();
-  //   ws.realTimeProtocol = "websockets"; // Define the protocol being used
-  //   realTimeClients[ws.uuid] = ws;
-  //   ws.send(
-  //     JSON.stringify({ uuid: ws.uuid, realTimeProtocol: ws.realTimeProtocol })
-  //   );
-  //   console.log(`Client connected ${ws.uuid} using ${ws.realTimeProtocol}`);
-  //   ws.on("message", (message) => {
-  //     try {
-  //       handleMessage(message, ws);
-  //     } catch (error) {
-  //       console.error("Error handling message:", error);
-  //       ws.send(JSON.stringify({ message: "Error processing message" }));
-  //     }
-  //   });
-
-  //   ws.on("close", () => {
-  //     handleClose(ws.uuid);
-  //   });
-  // });
-
-  io.on("connection", (socket) => {
-    socket.uuid = uuidv4();
-    socket.realTimeProtocol = "socket.io";
-    realTimeClients[socket.uuid] = socket;
-    socket.emit(
-      "message",
-      JSON.stringify({
-        uuid: socket.uuid,
-        realTimeProtocol: socket.realTimeProtocol,
-      })
-    );
-    console.log(
-      `Client connected ${socket.uuid} using ${socket.realTimeProtocol}`
-    );
-    socket.on("message", (message) => {
-      try {
-        handleMessage(message, socket);
-      } catch (error) {
-        console.error("Error handling message:", error);
-        socket.emit(
-          "message",
-          JSON.stringify({ message: "Error processing message" })
-        );
+    socket.on('join-channel', (data) => {
+      if (!validateJoinData(data)) {
+        socket.emit('message', { type: 'error', message: 'Invalid join data', timestamp: Date.now() });
+        return;
       }
+
+      const { userUuid, displayName, channelName } = data;
+      socket.join(channelName);
+      socket.userUuid = userUuid; // Store for disconnect handling
+
+      if (!channels.has(channelName)) {
+        channels.set(channelName, { users: {}, sockets: {} });
+      }
+
+      const channel = channels.get(channelName);
+      const color = getRandomColor();
+      channel.users[userUuid] = { displayName, color };
+      channel.sockets[userUuid] = socket;
+      realTimeClients[userUuid] = socket;
+
+      console.log(`${displayName} (${userUuid}) joined channel ${channelName}`);
+      broadcastToChannel(channelName, 'user-list', { users: channel.users });
     });
 
-    socket.on("disconnect", () => {
-      handleClose(socket.uuid);
+    socket.on('leave-channel', (data) => {
+      if (!validateLeaveData(data)) return;
+      cleanupUser(data.channelName, data.userUuid, socket);
+    });
+
+    socket.on('disconnect', () => {
+      for (const [channelName, channel] of channels) {
+        if (channel.sockets[socket.userUuid]) {
+          cleanupUser(channelName, socket.userUuid, socket);
+          break;
+        }
+      }
+      console.log(`Client disconnected: ${socket.id}`);
+    });
+
+    socket.on('message', (data) => {
+      handleMessage(data, socket);
     });
   });
-};
+}
 
-//This is a single client
-const sendToClient = (uuid, session, type, message = null) => {
-  const rtClient = realTimeClients[uuid];
+function handleMessage(data, socket) {
+  if (!validateMessage(data)) {
+    socket.emit('message', { type: 'error', message: 'Invalid message format', timestamp: Date.now() });
+    return;
+  }
 
-  if (rtClient) {
-    if (
-      rtClient.realTimeProtocol == "websockets" &&
-      rtClient.readyState === WebSocket.OPEN
-    ) {
-      rtClient.send(
-        JSON.stringify({
-          session,
-          type,
-          message,
-          realTimeProtocol: rtClient.realTimeProtocol,
-        })
-      );
+  const { userUuid, channelName, type, timestamp } = data;
+  if (!channels.has(channelName) || !channels.get(channelName).users[userUuid]) {
+    socket.emit('message', { type: 'error', message: 'Invalid channel or user', timestamp: Date.now() });
+    return;
+  }
+
+  messageLog.push({ type, userUuid, channelName, timestamp }); // Log for debugging
+  if (messageLog.length > 1000) messageLog.shift(); // Limit log size
+
+  switch (type) {
+    case 'heartbeat':
+      if (data.type === 'ping') {
+        socket.emit('message', { type: 'pong', timestamp: Date.now() });
+      }
+      break;
+    case 'add-document':
+    case 'remove-document':
+    case 'add-clip':
+    case 'remove-clip':
+    case 'vote-clip':
+    case 'transcription-update':
+    case 'flag-sentence':
+    case 'remove-synthesis':
+    case 'chat-draft':
+    case 'chat-message':
+      broadcastToChannel(channelName, type, data);
+      break;
+    case 'add-synthesis':
+      handleSynthesis(data, channelName);
+      break;
+    case 'agent-message':
+      handleAgentMessage(data, channelName); // Stub for AI chat
+      break;
+    default:
+      console.warn(`Unknown message type: ${type}`);
+      socket.emit('message', { type: 'error', message: `Unknown message type: ${type}`, timestamp: Date.now() });
+  }
+}
+
+function broadcastToChannel(channelName, type, data) {
+  if (channels.has(channelName)) {
+    const channel = channels.get(channelName);
+    const payload = { type, timestamp: data.timestamp, ...data };
+    for (const userUuid in channel.sockets) {
+      channel.sockets[userUuid].emit('message', payload);
     }
-    if (rtClient.realTimeProtocol == "socket.io") {
-      rtClient.emit(
-        //emit is the correct type for socket.io, not send
-        "message",
-        JSON.stringify({
-          session,
-          type,
-          message,
-          realTimeProtocol: rtClient.realTimeProtocol,
-        })
-      );
-    }
+  }
+}
+
+function sendToClient(userUuid, type, message = null) {
+  const socket = realTimeClients[userUuid];
+  if (socket) {
+    socket.emit('message', { type, message, timestamp: Date.now() });
   } else {
-    console.error(`No Client found for UUID: ${uuid}`);
-  }
-};
-
-async function handleMessage(message, client) {
-  try {
-    const data = JSON.parse(message);
-    if (!data.uuid) {
-      sendError(client, "Missing Uuid");
-      return;
-    }
-
-    if (data.type === "ping") {
-      sendToClient(data.uuid, data.session, "pong");
-      return;
-    }
-
-    if (data.type !== "prompt") {
-      sendToClient(
-        data.uuid,
-        data.session,
-        "ERROR",
-        "Unrecognized message type"
-      );
-      return;
-    }
-
-    const promptConfig = buildPromptConfig(data, null);
-    await handlePrompt(promptConfig, sendToClient);
-  } catch (error) {
-    console.error("Failed to handle message:", error);
-    sendError(client, "Error processing message");
+    console.error(`No client found for UUID: ${userUuid}`);
   }
 }
 
-function sendError(client, errorMessage) {
-  const payload = JSON.stringify({ message: errorMessage });
-  if (
-    client.realTimeProtocol === "websockets" &&
-    client.readyState === WebSocket.OPEN
-  ) {
-    client.send(payload);
-  } else if (client.realTimeProtocol === "socket.io") {
-    client.emit("message", payload);
+function cleanupUser(channelName, userUuid, socket) {
+  if (channels.has(channelName)) {
+    const channel = channels.get(channelName);
+    delete channel.users[userUuid];
+    delete channel.sockets[userUuid];
+    delete realTimeClients[userUuid];
+    socket.leave(channelName);
+
+    if (Object.keys(channel.users).length === 0) {
+      channels.delete(channelName);
+      console.log(`Channel ${channelName} deleted (empty)`);
+    } else {
+      broadcastToChannel(channelName, 'user-list', { users: channel.users });
+    }
+    console.log(`${userUuid} left channel ${channelName}`);
   }
 }
 
-function handleClose(uuid) {
-  delete realTimeClients[uuid];
+// Validation functions
+function validateJoinData(data) {
+  return data && data.userUuid && data.displayName && data.channelName;
+}
+
+function validateLeaveData(data) {
+  return data && data.userUuid && data.channelName;
+}
+
+function validateMessage(data) {
+  return data && data.userUuid && data.channelName && data.type && data.timestamp;
+}
+
+// AI synthesis handler
+async function handleSynthesis(data, channelName) {
+  const { userUuid, synthesis } = data;
+  const promptConfig = {
+    uuid: userUuid,
+    session: synthesis.id,
+    model: { provider: 'openai', model: 'gpt-4' }, // Placeholder
+    temperature: 0.7,
+    systemPrompt: 'Summarize the provided clips concisely',
+    userPrompt: synthesis.prompt,
+    messageHistory: synthesis.clips.map(clip => ({ role: 'user', content: clip.content })),
+  };
+
+  await handlePrompt(promptConfig, (uuid, session, type, message) => {
+    if (type === 'message') {
+      synthesis.output = (synthesis.output || '') + message;
+    } else if (type === 'EOM') {
+      broadcastToChannel(channelName, 'add-synthesis', { userUuid, synthesis });
+    } else if (type === 'ERROR') {
+      console.error('Synthesis error:', message);
+      sendToClient(userUuid, 'error', message);
+    }
+  });
+}
+
+// AI agent chat handler (stub)
+function handleAgentMessage(data, channelName) {
+  // TODO: Integrate with AI logic for chat participation
+  broadcastToChannel(channelName, 'agent-message', data);
+}
+
+function getRandomColor() {
+  const letters = '0123456789ABCDEF';
+  let color = '#';
+  for (let i = 0; i < 6; i++) {
+    color += letters[Math.floor(Math.random() * 16)];
+  }
+  return color;
 }
 
 module.exports = { createRealTimeServers, sendToClient };
