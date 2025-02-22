@@ -36,7 +36,7 @@ export function useRealTime() {
       }
     }
 
-    const apiUrl = env.value.API_URL || 'http://localhost:3000';
+    const apiUrl = env.value.API_URL ;
     socket = io(apiUrl, {
       reconnection: true,
       reconnectionAttempts: 5,

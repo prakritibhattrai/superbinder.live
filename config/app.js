@@ -22,7 +22,7 @@ app.use(express.urlencoded({ extended: true, limit: "100mb" })); //The largest i
 
 //Select the default port
 const port = process.env.PORT || 3000;
-const apiUrl = process.env.API_URL || 'http://localhost';
+const apiUrl = process.env.API_URL || 'http://localhost:3000';
 //Bring in the logger
 //const expressLogger = require("../middleware/expressLogger");
 //app.use(expressLogger);
