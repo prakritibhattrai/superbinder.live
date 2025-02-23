@@ -18,7 +18,7 @@ export default {
                 Collaborate in real-time with humans and AI agents to create and evaluate documents. Voice transcription and websocket sync make it fun and seamless!
               </p>
               <div class="mt-10 flex gap-6 sm:justify-center lg:justify-start">
-                <a href="/app" class="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-lg font-semibold transition-all transform hover:scale-105">
+                <a href="/binder" class="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-lg font-semibold transition-all transform hover:scale-105">
                   Launch SuperBinder
                 </a>
                 <a href="#features" class="px-8 py-3 border-2 border-indigo-400 hover:border-indigo-300 text-indigo-300 hover:text-white rounded-lg font-semibold transition-all transform hover:scale-105">
@@ -53,7 +53,7 @@ export default {
       <section class="py-24 bg-gray-800">
         <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center">
           <div class="flex flex-col items-center gap-6 p-6 bg-gray-900 rounded-xl border border-gray-700 hover:border-purple-500/50 transition-all">
-            <img :src="previewImg" alt="SuperBinder Preview" class="h-12 w-auto opacity-90" />
+           <!-- <img :src="previewImg" alt="SuperBinder Preview" class="h-12 w-auto opacity-90" /> -->
             <h2 class="text-3xl font-bold text-white">Experience Real-Time Collaboration</h2>
             <span class="text-gray-300 text-lg">Sync up and create together.</span>
           </div>
@@ -100,7 +100,7 @@ export default {
           <p class="text-gray-300 text-lg mb-12 max-w-2xl mx-auto">
             Connect with others building the future of human-AI collaboration.
           </p>
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
             <a href="https://github.com/developmentation/superbinder.live" target="_blank" class="flex flex-col items-center p-6 bg-gray-900 rounded-xl border border-gray-700 hover:border-purple-500/50 transition-all">
               <i class="pi pi-github text-3xl text-purple-400 mb-4"></i>
               <h3 class="text-white font-semibold">GitHub</h3>

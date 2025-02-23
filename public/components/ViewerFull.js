@@ -20,21 +20,9 @@ export default {
 
       <!-- Document and Search Results -->
       <div class="flex-1 overflow-auto p-4">
-        <!-- Document Selection -->
-        <select
-          v-model="selectedDocId"
-          @change="scrollToTop"
-          class="w-full p-2 mb-4 bg-gray-700 text-white rounded-lg border border-gray-600"
-        >
-          <option value="">Select a document</option>
-          <option v-for="doc in documents" :key="doc.id" :value="doc.id">
-            {{ doc.name }}
-          </option>
-        </select>
-
         <!-- Full Document View -->
-        <div v-if="selectedDoc && !searchResults.length" class="bg-gray-700 p-4 rounded-lg">
-          <div ref="docContent" v-html="renderContent(selectedDoc.content)" class="prose text-gray-300"></div>
+        <div v-if="selectedDocument && !searchResults.length" class="bg-gray-700 p-4 rounded-lg">
+          <div ref="docContent" v-html="renderContent(selectedDocument.processedContent)" class="prose text-gray-300"></div>
           <button
             v-if="selectedText"
             @click="clipSelectedText"
@@ -77,22 +65,19 @@ export default {
           </div>
         </div>
 
-        <div v-if="!selectedDocId && !searchResults.length" class="text-gray-400">
+        <div v-if="!selectedDocument && !searchResults.length" class="text-gray-400">
           Select a document or search to begin.
         </div>
       </div>
     </div>
   `,
   setup() {
-    const { documents } = useDocuments();
+    const { selectedDocument, documents } = useDocuments();
     const { addClip } = useClips();
     const { searchQuery, searchResults, searchDocuments } = useSearch();
-    const selectedDocId = Vue.ref('');
     const selectedText = Vue.ref('');
     const expanded = Vue.ref({});
     const docContent = Vue.ref(null);
-
-    const selectedDoc = Vue.computed(() => documents.value.find(doc => doc.id === selectedDocId.value));
 
     function performSearch() {
       if (searchQuery.value.trim()) {
@@ -121,21 +106,24 @@ export default {
     }
 
     function viewFullDoc(docId, segment) {
-      selectedDocId.value = docId;
-      Vue.nextTick(() => {
-        const contentEl = docContent.value;
-        if (contentEl) {
-          const matchIndex = selectedDoc.value.content.indexOf(segment);
-          if (matchIndex >= 0) {
-            contentEl.scrollTop = matchIndex / selectedDoc.value.content.length * contentEl.scrollHeight;
+      const doc = documents.value.find(d => d.id === docId);
+      if (doc) {
+        selectedDocument.value = doc; // Set selected document directly
+        Vue.nextTick(() => {
+          const contentEl = docContent.value;
+          if (contentEl) {
+            const matchIndex = doc.processedContent.indexOf(segment);
+            if (matchIndex >= 0) {
+              contentEl.scrollTop = matchIndex / doc.processedContent.length * contentEl.scrollHeight;
+            }
           }
-        }
-      });
+        });
+      }
     }
 
     function clipSelectedText() {
-      if (selectedText.value && selectedDocId.value) {
-        addClip(selectedText.value, selectedDocId.value);
+      if (selectedText.value && selectedDocument.value) {
+        addClip(selectedText.value, selectedDocument.value.id);
         selectedText.value = '';
       }
     }
@@ -175,9 +163,8 @@ export default {
     });
 
     return {
+      selectedDocument,
       documents,
-      selectedDocId,
-      selectedDoc,
       searchQuery,
       searchResults,
       expanded,

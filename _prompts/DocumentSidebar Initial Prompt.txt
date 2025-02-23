@@ -1,0 +1,79 @@
+OK this generally seems much better. in Binder.js I added p-2 to just give it back some of the padding removed from App.js.
+
+Now let's move onto the Document Sidebar. Here I want a number of key features.
+User can drag and drop a file anywhere in the document sidebar to trigger an upload. User can also click a PrimeVue 4 icon (pi-file-plus) to upload a file. Files added will be processed here on the client side, not send to the server. Each file must be processed before we use socket.io to share it with the rest of the community through a number of file processing steps which I will define below. Once a file is added, I should be able to rename it (which will rename it for everyone). Any change to the file after it is processed should cause that file to be updated for all users simultaneously.
+
+Here are my file processing steps.
+The user is free to attach the following file types
+.docx, .pdf, .pptx, .html, .txt, .js, .json,. css, .md, or any other text file which is generally text in nature. If the user attaches an .xlsx sheet, we should be able to see and search this a different way. 
+ The file in the sidebar should display with the correct icon beside the name as file type
+  js: 'pi pi-code',
+        jsx: 'pi pi-code',
+        ts: 'pi pi-code',
+        tsx: 'pi pi-code',
+        html: 'pi pi-code',
+        css: 'pi pi-palette',
+        scss: 'pi pi-palette',
+        // Data
+        json: 'pi pi-database',
+        xml: 'pi pi-database',
+        csv: 'pi pi-table',
+        // Documents
+        md: 'pi pi-file-edit',
+        txt: 'pi pi-file-edit',
+        doc: 'pi pi-file-word',
+        docx: 'pi pi-file-word',
+        pdf: 'pi pi-file-pdf',
+        // Images
+        png: 'pi pi-image',
+        jpg: 'pi pi-image',
+        jpeg: 'pi pi-image',
+        gif: 'pi pi-image',
+        svg: 'pi pi-image',
+        // Config
+        yml: 'pi pi-cog',
+        yaml: 'pi pi-cog',
+        config: 'pi pi-cog',
+        env: 'pi pi-cog',
+        // Git
+        gitignore: 'pi pi-github',
+        // Package
+        lock: 'pi pi-lock',
+        // Default
+        default: 'pi pi-file'
+
+File Processing Steps
+We need a ../utils/files/fileProcessor.js which will handle parsing each of the file types.
+For .docx we will want to be able to convert this into a very well rendered html so it maintains the look and the feel of the original document. For this, i think we can use mammoth which is already included into the app and need not be re-imported (1.9.0)
+For .pdf I've been using jspdf (2.5.1)
+For .md I've been using markdown-it (14.1.0) or marked to render this into html. I've been happy with either, so you pick which is the best. 
+For excel, I have exceljs (4.4.0)
+For JSON, I've been using JSON5, but not sure if this is helpful for rendering or just reading. I think json can be rendered nicely using one of the markdown renderers perhaps.
+
+Files should have a JSON object which contains
+- Original file metadata from the browser
+- New file metadata such as the new filename, uuid
+- Original file contents (which need to be read in the browser)
+- Processed file contents using the processing steps below.
+- Analysis contents which are explained down below.
+	summary:An AI written summary of the contents of the file
+	knowledgeGraph:{edges, nodes} an AI generated knowledge graph of edges and nodes
+	keywords: an AI generated list of keywords to enable quick searching and processing
+	vectors: an AI embedding model vectorization of the file contents
+-Status: pending (default), complete, error
+
+Processing the files should happen in a few steps:
+- New metadata object gets created using the original, but can be written over by the user
+- File type gets converted to the right html render process using the fileProcessor.js
+- Analysis contents are created, initially as null, with placeholder functions to produce the attributes (summary, knowledgeGraph, keywords, and vectors)
+
+Once it steps through this, the status of the file is set to complete if all goes well.
+The documents ref in useDocuments should contain these objects. Any user may add documents, so once the processing is done, they will be added in sequence. However, when a document is edited (such as the name) by any user, the order in which the documents were uploaded is preserved.
+
+To give you a sense of what comes after this, I've included extra steps for the interaction with the file below, however we can build this process later.
+
+Clicking on a file on the side menu should emit this to the Binder, and allow us to track the selected file for displaying in the ViewerFull. When it displays, it should be able to render in this window and maintain the formatting, layout, graphics, etc. I'd like to maintain the pages as well, instead of showing it as one very long document, but understand if this is not possible. If the user uploads a .pptx file, I would like to figure out how to show the slides as well. Embedded images, charts, tables, graphics etc. from these documents should maintain the correct layout. I also want to be able to toggle light and dark mode. 
+
+In the viewerfull I also want to be able to search. When searches are matched, want to be able to highlight the areas in bright yellow which were matched (light mode, dark yellow in dark mode) so the user can easily see them, and then step between each of the matches (since there could be several areas which match) by clicking an up and down arrow which will show (x, of y matches, for example we are looking at #3 of 15 matched areas in the text, so forth). If the user likes what is found, there also needs to be a scissors icon to turn that match into a clip. If the user selects no text in the ViewerFull then it just clips 50 characters on either side of the match. However, if the user selects a range of text in the ViewerFull, then the scissors will clip out whever is selected, maintaining the HTML style of it, and add it into the clips.
+
+This is a lot, so let's start with the documentssidebar first and get that perfected.

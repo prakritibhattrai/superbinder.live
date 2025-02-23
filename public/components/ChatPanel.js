@@ -6,7 +6,11 @@ export default {
   template: `
     <div class="h-full flex flex-col p-4">
       <h3 class="text-lg font-semibold text-purple-400 mb-4">Chat</h3>
-      <div class="flex-1 overflow-auto mb-4">
+      <div
+        ref="chatContainer"
+        class="flex-1 overflow-auto mb-4"
+        @scroll="handleScroll"
+      >
         <div
           v-for="msg in messages"
           :key="msg.id"
@@ -41,6 +45,8 @@ export default {
   setup() {
     const { messages, sendMessage, updateDraft, activeUsers } = useChat();
     const draft = Vue.ref('');
+    const chatContainer = Vue.ref(null);
+    const isAutoScrollEnabled = Vue.ref(true); // Track if auto-scroll is active
 
     function send() {
       if (draft.value.trim()) {
@@ -53,6 +59,29 @@ export default {
       return new Date(timestamp).toLocaleTimeString();
     }
 
+    // Handle scrolling to control auto-scroll behavior
+    function handleScroll() {
+      if (!chatContainer.value) return;
+
+      const container = chatContainer.value;
+      const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 5; // Allow slight buffer
+
+      if (isAtBottom) {
+        isAutoScrollEnabled.value = true; // Re-enable auto-scroll when scrolled to bottom
+      } else {
+        isAutoScrollEnabled.value = false; // Disable auto-scroll if scrolled up
+      }
+    }
+
+    // Auto-scroll to bottom when new messages arrive, if enabled
+    Vue.watch(messages, () => {
+      if (chatContainer.value && isAutoScrollEnabled.value) {
+        Vue.nextTick(() => {
+          chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
+        });
+      }
+    }, { deep: true });
+
     return {
       messages,
       draft,
@@ -60,6 +89,8 @@ export default {
       updateDraft: () => updateDraft(draft.value),
       activeUsers,
       formatTime,
+      chatContainer,
+      handleScroll
     };
   },
 };

@@ -36,7 +36,7 @@ export function useRealTime() {
       }
     }
 
-    const apiUrl = env.value.API_URL ;
+    const apiUrl = env.value.API_URL;
     socket = io(apiUrl, {
       reconnection: true,
       reconnectionAttempts: 5,
@@ -158,7 +158,6 @@ export function useRealTime() {
       timestamp: data.timestamp || Date.now(),
     };
 
-    // Skip timestamp check for user-list and user-joined to ensure they’re always processed
     if (['user-list', 'user-joined'].includes(processedData.type)) {
       console.log(`Processing critical update: ${processedData.type}`);
     } else if (processedData.timestamp <= lastMessageTimestamp.value) {
@@ -179,7 +178,7 @@ export function useRealTime() {
           ...activeUsers.value,
           [processedData.userUuid]: {
             displayName: processedData.displayName,
-            color: processedData.color,
+            color: processedData.color || generateRandomColor(), // Ensure color exists
           },
         };
         eventBus.$emit('user-joined', processedData);
@@ -204,6 +203,15 @@ export function useRealTime() {
       case 'agent-message':
         eventBus.$emit('agent-message', { agentId: processedData.agentId, text: processedData.text, color: processedData.color });
         break;
+      case 'add-document':
+        eventBus.$emit('add-document', processedData.document); // Emit to update documents
+        break;
+      case 'remove-document':
+        eventBus.$emit('remove-document', { documentId: processedData.documentId });
+        break;
+      case 'rename-document':
+        eventBus.$emit('rename-document', { documentId: processedData.documentId, newName: processedData.newName });
+        break;
       case 'pong':
         console.log('Heartbeat pong received');
         break;
@@ -216,6 +224,15 @@ export function useRealTime() {
     }
   }
 
+  function generateRandomColor() {
+    const letters = '0123456789ABCDEF';
+    let color = '#';
+    for (let i = 0; i < 6; i++) {
+      color += letters[Math.floor(Math.random() * 16)];
+    }
+    return color;
+  }
+  
   function on(event, callback) {
     eventBus.$on(event, callback);
   }

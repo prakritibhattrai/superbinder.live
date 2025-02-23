@@ -122,6 +122,7 @@ function handleMessage(data, socket) {
       break;
     case 'add-document':
     case 'remove-document':
+    case 'rename-document':
     case 'add-clip':
     case 'remove-clip':
     case 'vote-clip':
