@@ -120,7 +120,15 @@ function handleMessage(data, socket) {
     case 'user-joined':
       broadcastToChannel(channelName, type, data); // Ensure user-joined broadcasts to all
       break;
-    case 'add-document':
+
+
+      case 'add-goal':
+        case 'update-goal':
+          case 'remove-goal':
+            case 'reorder-goals':
+              case 'update-tab':
+
+      case 'add-document':
     case 'remove-document':
     case 'rename-document':
     case 'add-clip':

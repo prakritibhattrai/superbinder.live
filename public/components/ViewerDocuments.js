@@ -1,10 +1,10 @@
-// components/ViewerFull.js
+// components/ViewerDocuments.js
 import { useDocuments } from '../composables/useDocuments.js';
 import { useClips } from '../composables/useClips.js';
 import { useSearch } from '../composables/useSearch.js';
 
 export default {
-  name: 'ViewerFull',
+  name: 'ViewerDocuments',
   template: `
     <div class="h-full flex flex-col overflow-hidden">
       <!-- Search Bar -->
@@ -20,7 +20,7 @@ export default {
 
       <!-- Document and Search Results -->
       <div class="flex-1 overflow-auto p-4">
-        <!-- Full Document View -->
+        <!-- Document View -->
         <div v-if="selectedDocument && !searchResults.length" class="bg-gray-700 p-4 rounded-lg">
           <div ref="docContent" v-html="renderContent(selectedDocument.processedContent)" class="prose text-gray-300"></div>
           <button

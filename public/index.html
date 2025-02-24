@@ -91,9 +91,64 @@
   <!-- Worker, cmaps, and standard_fonts imported via the npm i pdfjs-dist node_modules folder, included in the node.js package.json-->
   <script type="module" src="./plugins/pdf.min.mjs"></script>
 
+
+  <!-- VueDraggable for Vue 3-->
+  <!-- <script src="//cdnjs.cloudflare.com/ajax/libs/Vue.Draggable/4.0.0/vuedraggable.umd.min.js"></script> -->
+  <script src="https://unpkg.com/vuedraggable@4.1.0/dist/vuedraggable.umd.min.js"></script>
+
   <!-- Include Main Script -->
   <script type="module" src="/main.js"></script>
 
+  <style>
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, and Opera */
+}
+.scrollbar-hide {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+.chat-panel {
+  height: auto; /* Default to auto to allow content to determine height, but constrained by :style */
+  max-height: calc(100vh - 200px); /* Prevent overflow beyond viewport for desktop */
+  overflow-y: auto; /* Allow scrolling if content exceeds height */
+}
+
+/* On mobile, override to use calculated viewport height minus header and input */
+.chat-panel.mobile {
+  height: calc(100vh - 96px); /* Subtract header (48px) + input (48px) */
+  width: 100% !important; /* Ensure full width on mobile */
+  margin: 0 !important;
+  padding: 0 !important;
+  position: fixed; /* Ensure it’s fixed to the viewport */
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+/* Ensure the desktop version uses absolute positioning and calculated height */
+.chat-panel:not(.mobile) {
+  position: absolute;
+  top: 0;
+  bottom: 0; /* Stretch to bottom of viewport, but constrained by :style */
+  right: 0;
+  height: calc(100vh - 200px); /* Subtract header height (adjust if needed) */
+  max-height: calc(100vh - 200px);
+}
+
+/* Ensure flex children in chat-panel expand correctly */
+.chat-panel .flex-1 {
+  flex: 1;
+  min-height: 0; /* Prevent flex children from overflowing */
+  overflow-y: auto; /* Allow scrolling within the message area */
+}
+
+/* Ensure the input area stays visible at the bottom */
+.chat-panel .p-2:last-child {
+  flex-shrink: 0; /* Prevent the input area from shrinking */
+}
+  </style>
   <style>
     html,
     body {

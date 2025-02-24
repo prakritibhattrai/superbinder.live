@@ -188,6 +188,8 @@ export function useRealTime() {
           documents: useDocuments().documents.value,
           clips: useClips().clips.value,
           messages: useChat().messages.value,
+          goals: useGoals().goals.value,
+          questions: useQuestions().questions.value,
         };
         emit('history-snapshot', { requesterUuid: processedData.requesterUuid, history });
         break;
@@ -204,13 +206,61 @@ export function useRealTime() {
         eventBus.$emit('agent-message', { agentId: processedData.agentId, text: processedData.text, color: processedData.color });
         break;
       case 'add-document':
-        eventBus.$emit('add-document', processedData.document); // Emit to update documents
+        eventBus.$emit('add-document', processedData.document);
         break;
       case 'remove-document':
         eventBus.$emit('remove-document', { documentId: processedData.documentId });
         break;
       case 'rename-document':
         eventBus.$emit('rename-document', { documentId: processedData.documentId, newName: processedData.newName });
+        break;
+      case 'add-goal':
+        eventBus.$emit('add-goal', processedData.goal);
+        break;
+      case 'update-goal':
+        eventBus.$emit('update-goal', { id: processedData.id, text: processedData.text });
+        break;
+      case 'remove-goal':
+        eventBus.$emit('remove-goal', { id: processedData.id });
+        break;
+      case 'reorder-goals':
+        eventBus.$emit('reorder-goals', { order: processedData.order });
+        break;
+      case 'add-question':
+        eventBus.$emit('add-question', processedData.question);
+        break;
+      case 'update-question':
+        eventBus.$emit('update-question', { id: processedData.id, text: processedData.text });
+        break;
+      case 'remove-question':
+        eventBus.$emit('remove-question', { id: processedData.id });
+        break;
+      case 'reorder-questions':
+        eventBus.$emit('reorder-questions', { order: processedData.order });
+        break;
+      case 'add-answer':
+        eventBus.$emit('add-answer', { questionId: processedData.questionId, answer: processedData.answer });
+        break;
+      case 'update-answer':
+        eventBus.$emit('update-answer', { questionId: processedData.questionId, answerId: processedData.answerId, text: processedData.text });
+        break;
+      case 'remove-answer':
+        eventBus.$emit('remove-answer', { questionId: processedData.questionId, answerId: processedData.answerId });
+        break;
+      case 'reorder-answers':
+        eventBus.$emit('reorder-answers', { questionId: processedData.questionId, order: processedData.order });
+        break;
+      case 'vote-answer':
+        eventBus.$emit('vote-answer', { questionId: processedData.questionId, answerId: processedData.answerId, vote: processedData.vote });
+        break;
+      case 'question-draft':
+        eventBus.$emit('question-draft', { id: processedData.id, text: processedData.text });
+        break;
+      case 'answer-draft':
+        eventBus.$emit('answer-draft', { questionId: processedData.questionId, answerId: processedData.answerId, text: processedData.text });
+        break;
+      case 'update-tab':
+        eventBus.$emit('update-tab', { tab: processedData.tab });
         break;
       case 'pong':
         console.log('Heartbeat pong received');

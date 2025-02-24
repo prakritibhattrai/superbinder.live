@@ -1,12 +1,12 @@
-// components/DocumentSidebar.js
+// components/Uploads.js
 import { useDocuments } from '../composables/useDocuments.js';
 import { useRealTime } from '../composables/useRealTime.js';
 
 export default {
-  name: 'DocumentSidebar',
+  name: 'Uploads',
   template: `
     <div class="p-2 h-full overflow-y-auto">
-      <h3 class="text-lg font-semibold text-purple-400 mb-4">Documents</h3>
+      <h3 class="text-lg font-semibold text-purple-400 mb-4">Uploads</h3>
       
       <!-- Drag and Drop Area with Upload Button -->
       <div 

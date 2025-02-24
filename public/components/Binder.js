@@ -1,85 +1,110 @@
 // components/Binder.js
 import { useRealTime } from '../composables/useRealTime.js';
 import SessionSetup from './SessionSetup.js';
-import DocumentSidebar from './DocumentSidebar.js';
+import Uploads from './Uploads.js';
 import Viewer from './Viewer.js';
 import ChatPanel from './ChatPanel.js';
 
 export default {
   name: 'Binder',
-  components: { SessionSetup, DocumentSidebar, Viewer, ChatPanel },
+  components: { SessionSetup, Uploads, Viewer, ChatPanel },
   template: `
-    <div class="flex flex-col min-h-screen bg-gray-950 text-white overflow-hidden p-2">
+    <div class="flex flex-col min-h-screen bg-gray-950 text-white p-2 overflow-x-hidden" style="height: 100vh;">
       <session-setup v-if="!sessionReady" @setup-complete="handleSetupComplete" />
-      <div v-if="sessionReady" class="flex flex-col h-full">
+
+      <div v-if="sessionReady" class="flex flex-col h-full relative">
         <!-- Menu Bar -->
-        <div class="bg-gray-800 p-2 border-b border-gray-700 flex items-center justify-between text-sm">
+        <div class="bg-gray-800 p-2 border-b border-gray-700 flex flex-col sm:flex-row sm:items-center justify-between text-sm gap-2">
           <div class="flex items-center space-x-2">
-            <span class="text-lg font-semibold text-white">Channel: {{ channelName }}</span>
-            <span class="text-gray-300">({{ participantCount }} participants)</span>
+          <!--  <span class="text-lg font-semibold text-white">SuperBinder Binder</span> -->
+            <span class="text-lg font-semibold text-gray-100">Channel: '{{ channelName }}' ({{ participantCount }} participants)</span>
           </div>
-          <div class="flex items-center space-x-2">
-            <button
-              @click="resetSession"
-              class="p-2 text-white hover:text-purple-400"
-              title="Reset Session"
-            >
+          <div class="flex items-center space-x-2 sm:ml-auto">
+            <button @click="resetSession" class="p-2 text-white hover:text-purple-400" title="Reset Session">
               <i class="pi pi-refresh text-xl"></i>
             </button>
-            <button
-              @click="toggleRoomLock"
-              class="p-2 text-white hover:text-purple-400"
-              :class="{ 'text-green-500': !isRoomLocked, 'text-red-500': isRoomLocked }"
-              title="Toggle Room Lock"
-            >
+            <button @click="toggleRoomLock" class="p-2 text-white hover:text-purple-400" :class="{ 'text-green-500': !isRoomLocked, 'text-red-500': isRoomLocked }" title="Toggle Room Lock">
               <i class="pi pi-lock text-xl"></i>
             </button>
-            <button
-              @click="uploadToCloud"
-              class="p-2 text-white hover:text-purple-400"
-              title="Upload to Cloud"
-            >
+            <button @click="uploadToCloud" class="p-2 text-white hover:text-purple-400" title="Upload to Cloud">
               <i class="pi pi-cloud-upload text-xl"></i>
             </button>
-            <button
-              @click="downloadFromCloud"
-              class="p-2 text-white hover:text-purple-400"
-              title="Download from Cloud"
-            >
+            <button @click="downloadFromCloud" class="p-2 text-white hover:text-purple-400" title="Download from Cloud">
               <i class="pi pi-cloud-download text-xl"></i>
             </button>
           </div>
         </div>
-        <div class="flex flex-col md:flex-row flex-1 overflow-hidden">
-          <!-- Documents Column (Sidebar) -->
-          <div class="w-full md:w-1/4 lg:w-1/5 bg-gray-900 border-r border-gray-700 flex-shrink-0 overflow-y-auto" 
-               :style="{ maxHeight: 'calc(100vh - 200px)' }">
-            <document-sidebar />
+
+        <!-- Tab Bar with Chat Icon -->
+        <div class="bg-gray-900 border-b border-gray-700 px-4 py-2 relative flex items-center">
+          <div class="flex gap-2 overflow-x-auto scrollbar-hide">
+            <button
+              v-for="tab in tabs"
+              :key="tab"
+              @click="activeTab = tab; updateActiveTab(tab)"
+              class="px-4 py-2 rounded-t-lg font-semibold transition-colors whitespace-nowrap"
+              :class="[
+                activeTab === tab ? 'bg-gray-800 text-purple-400' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              ]"
+            >
+              {{ tab }}
+            </button>
           </div>
-          <!-- Viewer Column -->
-          <div class="flex-1 flex flex-col overflow-hidden">
-            <div class="bg-gray-900 border-b border-gray-700 px-4 py-2 flex gap-2">
+
+          <!-- Chat Icon (Visible on desktop, hidden on mobile) -->
+          <button
+            @click="toggleChat"
+            class="ml-auto px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors hidden sm:inline-flex"
+            :class="{ 'bg-gray-800 text-purple-400': isChatOpen }"
+          >
+            <i class="pi pi-comments text-xl"></i>
+          </button>
+        </div>
+
+        <!-- Main Content -->
+        <div class="flex flex-1 flex-col overflow-hidden relative" style="height: 100%;">
+          <!-- Document Sub-Tabs (only when Documents tab is active) -->
+          <div v-if="activeTab === 'Documents'" class="bg-gray-900 border-b border-gray-700 px-4 py-2">
+            <div class="flex gap-2 overflow-x-auto scrollbar-hide">
               <button
-                v-for="tab in viewerTabs"
-                :key="tab"
-                @click="activeTab = tab"
+                v-for="subTab in documentSubTabs"
+                :key="subTab"
+                @click="activeDocumentSubTab = subTab; updateActiveTab('Documents')"
+                class="px-4 py-2 rounded-t-lg font-semibold transition-colors whitespace-nowrap"
                 :class="[
-                  'px-4 py-2 rounded-t-lg font-semibold transition-colors',
-                  activeTab === tab ? 'bg-gray-800 text-purple-400' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  activeDocumentSubTab === subTab ? 'bg-gray-800 text-purple-400' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                 ]"
               >
-                {{ tab }}
+                {{ subTab }}
               </button>
             </div>
-            <div class="flex-1 overflow-y-auto" :style="{ maxHeight: 'calc(100vh - 200px)' }">
-              <viewer :active-tab="activeTab" />
-            </div>
           </div>
-          <!-- Chat Column -->
-          <div class="w-full md:w-1/3 lg:w-1/4 bg-gray-900 border-l border-gray-700 flex-shrink-0 overflow-y-auto" 
-               :style="{ maxHeight: 'calc(100vh - 200px)' }">
-            <chat-panel />
+
+          <!-- Viewer -->
+          <div class="flex-1 overflow-y-auto w-full" :style="{ maxHeight: 'calc(100vh - 180px)' }">
+            <viewer :active-tab="activeTab" :active-document-sub-tab="activeDocumentSubTab" class="w-full" />
           </div>
+
+          <!-- Chat Button (Always visible on mobile, hidden on desktop) -->
+          <button
+            @click="toggleChat"
+            class="fixed bottom-4 right-4 p-3 bg-purple-600 text-white rounded-full shadow-lg z-50 sm:hidden"
+            :class="{ 'bg-gray-800': isChatOpen }"
+          >
+            <i class="pi pi-comments text-xl"></i>
+          </button>
+
+          <chat-panel
+            v-if="isChatOpen"
+            :is-open="isChatOpen"
+            :is-mobile="isMobile"
+            :width="chatWidth"
+            @close="toggleChat"
+            @update:width="updateChatWidth"
+            class="z-50"
+            :class="{ 'fixed inset-0 bg-gray-900 bg-opacity-95': isMobile, 'absolute right-0 top-0': !isMobile }"
+            :style="{ 'width': isMobile ? '100%' : \`\${chatWidth}px\`, 'height': 'calc(100vh - 200px)' }" 
+          />
         </div>
       </div>
     </div>
@@ -87,12 +112,21 @@ export default {
   setup() {
     const { sessionInfo, connect, loadSession, disconnect, isConnected, connectionError, activeUsers, emit, on, off } = useRealTime();
     const sessionReady = Vue.ref(false);
-    const activeTab = Vue.ref('Full');
-    const viewerTabs = ['Full', 'Clips', 'Transcribe', 'Synthesize'];
-    const isRoomLocked = Vue.ref(false); // Track room lock state
+    const activeTab = Vue.ref('Goals');
+    const activeDocumentSubTab = Vue.ref('Uploads');
+    const tabs = ['Goals', 'Agents', 'Documents', 'Transcriptions', 'Q&A', 'Artifacts'];
+    const documentSubTabs = ['Uploads', 'Viewer', 'Clips'];
+    const isRoomLocked = Vue.ref(false);
+    const isChatOpen = Vue.ref(false);
+    const chatWidth = Vue.ref(300);
     const { userUuid, displayName, channelName } = useRealTime();
 
-    // Calculate participant count from activeUsers
+    const isMobile = Vue.ref(window.matchMedia('(max-width: 640px)').matches);
+    const updateIsMobile = () => {
+      isMobile.value = window.matchMedia('(max-width: 640px)').matches;
+    };
+    window.addEventListener('resize', updateIsMobile);
+
     const participantCount = Vue.computed(() => Object.keys(activeUsers.value || {}).length);
 
     function handleSetupComplete({ channel, name }) {
@@ -109,7 +143,9 @@ export default {
       displayName.value = '';
       channelName.value = '';
       sessionReady.value = false;
-      isRoomLocked.value = false; // Reset room lock on session reset
+      isRoomLocked.value = false;
+      isChatOpen.value = false;
+      chatWidth.value = 300;
     }
 
     function toggleRoomLock() {
@@ -118,29 +154,52 @@ export default {
     }
 
     function uploadToCloud() {
-      console.log('Uploading channel data to cloud:', {
-        channelName: channelName.value,
-        participants: activeUsers.value,
-        // Add documents, clips, messages, etc., from useDocuments, useClips, useChat
-      });
-      // Implement backend integration here (e.g., fetch or axios POST to /api/channel/save)
+      console.log('Uploading channel data to cloud:', { channelName: channelName.value, participants: activeUsers.value });
     }
 
     function downloadFromCloud() {
       console.log('Downloading channel data from cloud for:', channelName.value);
-      // Implement backend integration here (e.g., fetch or axios GET from /api/channel/load)
     }
 
-    function handleRoomLockToggle(data) {
-      if (data.channelName === channelName.value) {
-        isRoomLocked.value = data.locked;
+    function updateActiveTab(tab) {
+      activeTab.value = tab;
+      if (tab !== 'Documents') {
+        activeDocumentSubTab.value = 'Uploads';
+      }
+      emit('update-tab', { tab: tab, subTab: tab === 'Documents' ? activeDocumentSubTab.value : null });
+    }
+
+    function toggleChat() {
+      isChatOpen.value = !isChatOpen.value;
+    }
+
+    function updateChatWidth(newWidth) {
+      chatWidth.value = Math.max(200, newWidth);
+    }
+
+    function handleTabUpdate(data) {
+      if (data.tab) {
+        activeTab.value = data.tab;
+        if (data.subTab && data.tab === 'Documents') {
+          activeDocumentSubTab.value = data.subTab;
+        }
       }
     }
 
-    on('room-lock-toggle', handleRoomLockToggle);
+
+    //Add this in the future as an optional pin, so all viewers are tracking
+    // on('update-tab', handleTabUpdate);
+
+    on('room-lock-toggle', (data) => {
+      if (data.channelName === channelName.value) {
+        isRoomLocked.value = data.locked;
+      }
+    });
 
     Vue.onUnmounted(() => {
-      off('room-lock-toggle', handleRoomLockToggle);
+      off('update-tab', handleTabUpdate);
+      off('room-lock-toggle');
+      window.removeEventListener('resize', updateIsMobile);
     });
 
     Vue.watch(isConnected, (connected) => {
@@ -156,31 +215,12 @@ export default {
       }
     });
 
-    // Handle resize to maintain layout
-    Vue.onMounted(() => {
-      const handleResize = () => {
-        const binder = document.querySelector('.min-h-screen');
-        if (binder) {
-          const headerHeight = binder.querySelector('.bg-gray-800')?.offsetHeight || 56; // Approximate header height
-          const contentHeight = `calc(100vh - ${headerHeight + 200}px)`; // Subtract header + 200px for bottom visibility
-          document.querySelectorAll('.overflow-y-auto').forEach(el => {
-            el.style.maxHeight = contentHeight;
-          });
-        }
-      };
-
-      window.addEventListener('resize', handleResize);
-      handleResize(); // Set initial height
-
-      Vue.onUnmounted(() => {
-        window.removeEventListener('resize', handleResize);
-      });
-    });
-
     return {
       sessionReady,
       activeTab,
-      viewerTabs,
+      activeDocumentSubTab,
+      tabs,
+      documentSubTabs,
       handleSetupComplete,
       resetSession,
       toggleRoomLock,
@@ -192,6 +232,12 @@ export default {
       channelName,
       participantCount,
       isRoomLocked,
+      isChatOpen,
+      isMobile,
+      toggleChat,
+      chatWidth,
+      updateChatWidth,
+      updateActiveTab,
     };
   },
 };
