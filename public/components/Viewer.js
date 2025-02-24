@@ -1,5 +1,6 @@
 // components/Viewer.vue
 import ViewerGoals from './ViewerGoals.js';
+import ViewerAgents from './ViewerAgents.js';
 import ViewerDocuments from './ViewerDocuments.js';
 import ViewerClips from './ViewerClips.js';
 import ViewerTranscribe from './ViewerTranscribe.js';
@@ -12,6 +13,7 @@ export default {
   name: 'Viewer',
   components: {
     ViewerGoals,
+    ViewerAgents,
     ViewerDocuments,
     ViewerClips,
     ViewerTranscribe,
@@ -44,6 +46,7 @@ export default {
   template: `
     <div class="h-full p-4">
       <viewer-goals v-show="activeTab === 'Goals'" />
+      <viewer-agents v-show="activeTab === 'Agents'" />
       <viewer-documents v-show="activeTab === 'Documents' && activeDocumentSubTab === 'Viewer'" />
       <viewer-clips v-show="activeTab === 'Documents' && activeDocumentSubTab === 'Clips'" />
       <viewer-transcribe v-show="activeTab === 'Transcriptions'" />

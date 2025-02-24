@@ -22,11 +22,21 @@ export function useGoals() {
     goals.value = goals.value.filter(g => g.id !== id);
   }
 
-  function handleReorderGoals(newOrder) {
-    goals.value = newOrder.map((id, index) => {
+  function handleReorderGoals({ order }) {
+    if (!Array.isArray(order)) {
+      console.error('Invalid order format in reorder-goals event: expected array of IDs, got', order);
+      return;
+    }
+    // Map the order (array of IDs) to update the goals array with correct order
+    goals.value = order.map((id, index) => {
       const goal = goals.value.find(g => g.id === id);
-      return { ...goal, order: index };
-    }).sort((a, b) => a.order - b.order);
+      if (!goal) {
+        console.warn(`Goal with ID ${id} not found for reordering`);
+        return null;
+      }
+      return { ...goal, order: index }; // Update order based on new position
+    }).filter(goal => goal !== null) // Filter out any nulls if a goal isn’t found
+      .sort((a, b) => a.order - b.order); // Sort by order for consistency
   }
 
   on('add-goal', handleAddGoal);
@@ -63,10 +73,20 @@ export function useGoals() {
 
   function reorderGoals(draggedId, newIndex) {
     const currentIndex = goals.value.findIndex(g => g.id === draggedId);
+    if (currentIndex === -1) {
+      console.warn(`Goal with ID ${draggedId} not found for reordering`);
+      return;
+    }
+
     const newOrder = [...goals.value];
     const [movedGoal] = newOrder.splice(currentIndex, 1);
     newOrder.splice(newIndex, 0, movedGoal);
-    newOrder.forEach((goal, index) => goal.order = index);
+
+    // Update order property for each goal based on new position
+    newOrder.forEach((goal, index) => {
+      goal.order = index;
+    });
+
     goals.value = newOrder;
     emit('reorder-goals', { order: newOrder.map(g => g.id) });
   }

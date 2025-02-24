@@ -123,10 +123,15 @@ function handleMessage(data, socket) {
 
 
       case 'add-goal':
-        case 'update-goal':
-          case 'remove-goal':
-            case 'reorder-goals':
-              case 'update-tab':
+      case 'update-goal':
+      case 'remove-goal':
+      case 'reorder-goals':
+
+      case 'add-agent':
+      case 'update-agent':
+      case 'remove-agent':
+
+        case 'update-tab':
 
       case 'add-document':
     case 'remove-document':

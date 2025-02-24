@@ -185,11 +185,11 @@ export function useRealTime() {
         break;
       case 'request-history':
         const history = {
-          documents: useDocuments().documents.value,
-          clips: useClips().clips.value,
-          messages: useChat().messages.value,
-          goals: useGoals().goals.value,
-          questions: useQuestions().questions.value,
+          //   documents: useDocuments().documents.value,
+          //   clips: useClips().clips.value,
+          //   messages: useChat().messages.value,
+          //   goals: useGoals().goals.value,
+          //   questions: useQuestions().questions.value,
         };
         emit('history-snapshot', { requesterUuid: processedData.requesterUuid, history });
         break;
@@ -261,6 +261,15 @@ export function useRealTime() {
         break;
       case 'update-tab':
         eventBus.$emit('update-tab', { tab: processedData.tab });
+        break;
+      case 'add-agent':
+        eventBus.$emit('add-agent', processedData.agent);
+        break;
+      case 'update-agent':
+        eventBus.$emit('update-agent', processedData.agent);
+        break;
+      case 'remove-agent':
+        eventBus.$emit('remove-agent', { name: processedData.name });
         break;
       case 'pong':
         console.log('Heartbeat pong received');

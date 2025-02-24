@@ -23,7 +23,8 @@ export default {
               <i class="pi pi-refresh text-xl"></i>
             </button>
             <button @click="toggleRoomLock" class="p-2 text-white hover:text-purple-400" :class="{ 'text-green-500': !isRoomLocked, 'text-red-500': isRoomLocked }" title="Toggle Room Lock">
-              <i class="pi pi-lock text-xl"></i>
+              <i v-if = "!isRoomLocked" class="pi pi-unlock text-xl"></i>
+              <i v-if = "isRoomLocked" class="pi pi-lock text-xl"></i>
             </button>
             <button @click="uploadToCloud" class="p-2 text-white hover:text-purple-400" title="Upload to Cloud">
               <i class="pi pi-cloud-upload text-xl"></i>
@@ -63,7 +64,7 @@ export default {
         <!-- Main Content -->
         <div class="flex flex-1 flex-col overflow-hidden relative" style="height: 100%;">
           <!-- Document Sub-Tabs (only when Documents tab is active) -->
-          <div v-if="activeTab === 'Documents'" class="bg-gray-900 border-b border-gray-700 px-4 py-2">
+          <div v-show="activeTab === 'Documents'" class="bg-gray-900 border-b border-gray-700 px-4 py-2">
             <div class="flex gap-2 overflow-x-auto scrollbar-hide">
               <button
                 v-for="subTab in documentSubTabs"
@@ -99,7 +100,7 @@ export default {
           </button>
 
           <chat-panel
-            v-if="isChatOpen"
+            v-show="isChatOpen"
             :is-open="isChatOpen"
             :is-mobile="isMobile"
             :width="chatWidth"
