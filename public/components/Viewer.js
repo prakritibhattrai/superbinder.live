@@ -43,13 +43,13 @@ export default {
   },
   template: `
     <div class="h-full p-4">
-      <viewer-goals v-if="activeTab === 'Goals'" />
-      <viewer-documents v-if="activeTab === 'Documents' && activeDocumentSubTab === 'Viewer'" />
-      <viewer-clips v-if="activeTab === 'Documents' && activeDocumentSubTab === 'Clips'" />
-      <viewer-transcribe v-if="activeTab === 'Transcriptions'" />
-      <viewer-questions v-if="activeTab === 'Q&A'" />
-      <viewer-artifacts v-if="activeTab === 'Artifacts'" />
-      <uploads v-if="activeTab === 'Documents' && activeDocumentSubTab === 'Uploads'" />
+      <viewer-goals v-show="activeTab === 'Goals'" />
+      <viewer-documents v-show="activeTab === 'Documents' && activeDocumentSubTab === 'Viewer'" />
+      <viewer-clips v-show="activeTab === 'Documents' && activeDocumentSubTab === 'Clips'" />
+      <viewer-transcribe v-show="activeTab === 'Transcriptions'" />
+      <viewer-questions v-show="activeTab === 'Q&A'" />
+      <viewer-artifacts v-show="activeTab === 'Artifacts'" />
+      <uploads v-show="activeTab === 'Documents' && activeDocumentSubTab === 'Uploads'" />
     </div>
   `,
 };

@@ -1,7 +1,7 @@
 // components/Binder.js
 import { useRealTime } from '../composables/useRealTime.js';
 import SessionSetup from './SessionSetup.js';
-import Uploads from './Uploads.js';
+import Uploads from './Uploads.js'; // Renamed DocumentSidebar.js
 import Viewer from './Viewer.js';
 import ChatPanel from './ChatPanel.js';
 
@@ -16,7 +16,6 @@ export default {
         <!-- Menu Bar -->
         <div class="bg-gray-800 p-2 border-b border-gray-700 flex flex-col sm:flex-row sm:items-center justify-between text-sm gap-2">
           <div class="flex items-center space-x-2">
-          <!--  <span class="text-lg font-semibold text-white">SuperBinder Binder</span> -->
             <span class="text-lg font-semibold text-gray-100">Channel: '{{ channelName }}' ({{ participantCount }} participants)</span>
           </div>
           <div class="flex items-center space-x-2 sm:ml-auto">
@@ -80,9 +79,14 @@ export default {
             </div>
           </div>
 
-          <!-- Viewer -->
-          <div class="flex-1 overflow-y-auto w-full" :style="{ maxHeight: 'calc(100vh - 180px)' }">
-            <viewer :active-tab="activeTab" :active-document-sub-tab="activeDocumentSubTab" class="w-full" />
+          <!-- Viewer (Keep all components mounted with v-show) -->
+          <div class="flex-1 overflow-y-auto" :style="{ maxHeight: 'calc(100vh - 180px)' }">
+            <viewer
+              :active-tab="activeTab"
+              :active-document-sub-tab="activeDocumentSubTab"
+              v-show="true"
+              class="w-full"
+            />
           </div>
 
           <!-- Chat Button (Always visible on mobile, hidden on desktop) -->
@@ -103,7 +107,7 @@ export default {
             @update:width="updateChatWidth"
             class="z-50"
             :class="{ 'fixed inset-0 bg-gray-900 bg-opacity-95': isMobile, 'absolute right-0 top-0': !isMobile }"
-            :style="{ 'width': isMobile ? '100%' : \`\${chatWidth}px\`, 'height': 'calc(100vh - 200px)' }" 
+            :style="{ 'width': isMobile ? '100%' : \`\${chatWidth}px\`, 'height': 'calc(100vh - 200px)' }"
           />
         </div>
       </div>
@@ -185,10 +189,6 @@ export default {
         }
       }
     }
-
-
-    //Add this in the future as an optional pin, so all viewers are tracking
-    // on('update-tab', handleTabUpdate);
 
     on('room-lock-toggle', (data) => {
       if (data.channelName === channelName.value) {
