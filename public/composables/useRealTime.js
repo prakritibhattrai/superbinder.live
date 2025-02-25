@@ -45,7 +45,7 @@ export function useRealTime() {
     }
     lastMessageTimestamp.value = Math.max(lastMessageTimestamp.value, processedData.timestamp);
 
-    console.log(`Received ${processedData.type} from ${processedData.userUuid || 'server'}:`, processedData);
+    // console.log(`Received ${processedData.type} from ${processedData.userUuid || 'server'}:`, processedData);
 
     switch (processedData.type) {
       case 'init-state':

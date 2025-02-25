@@ -8,7 +8,7 @@ const eventHandlers = new WeakMap();
 
 export function useGoals() {
   function handleAddGoal(data) {
-    console.log('Received add-goal event:', data);
+    //console.log('Received add-goal event:', data);
     const { id, text } = data;
     if (!id || !text) {
       console.warn('Invalid goal received in handleAddGoal: missing id or text', data);
@@ -23,12 +23,12 @@ export function useGoals() {
       }
       setTimeout(() => processedEvents.delete(eventKey), 1000);
     } else {
-      console.warn('Duplicate add-goal event detected, ignoring:', data);
+    //   console.warn('Duplicate add-goal event detected, ignoring:', data);
     }
   }
 
   function handleUpdateGoal(data) {
-    console.log('Received update-goal event:', data);
+    //console.log('Received update-goal event:', data);
     const { id, text } = data;
     if (!id || typeof text !== 'string' || text.trim() === '') {
       console.warn('Invalid update-goal data: missing id or invalid text', data);
@@ -44,7 +44,7 @@ export function useGoals() {
   }
 
   function handleRemoveGoal(data) {
-    console.log('Received remove-goal event:', data);
+    //console.log('Received remove-goal event:', data);
     const { id } = data;
     if (!id) {
       console.warn('Invalid remove-goal data: missing id', data);
@@ -58,12 +58,12 @@ export function useGoals() {
       });
       goals.value = [...goals.value];
     } else {
-      console.warn('Goal not found for removal:', id);
+    //   console.warn('Goal not found for removal:', id);
     }
   }
 
   function handleReorderGoals(data) {
-    console.log('Received reorder-goals event:', data);
+    //console.log('Received reorder-goals event:', data);
     const { order } = data;
     if (!Array.isArray(order) || order.length === 0) {
       console.error('Invalid order format in reorder-goals event: expected non-empty array of IDs', order);
@@ -108,7 +108,7 @@ export function useGoals() {
     const goal = { id, text: text.trim(), order: goals.value.length };
     goals.value.push(goal);
     goals.value = [...goals.value];
-    console.log('Emitting add-goal:', { id, text, order: goals.value.length });
+    //console.log('Emitting add-goal:', { id, text, order: goals.value.length });
     emit('add-goal', { id, text, order: goals.value.length, timestamp: Date.now() });
   }
 
@@ -121,7 +121,7 @@ export function useGoals() {
     if (goal) {
       goal.text = text.trim();
       goals.value = [...goals.value];
-      console.log('Emitting update-goal:', { id, text: text.trim() });
+      //console.log('Emitting update-goal:', { id, text: text.trim() });
       emit('update-goal', { id, text: text.trim(), timestamp: Date.now() });
     } else {
       console.warn('Goal not found for update:', id);
@@ -140,7 +140,7 @@ export function useGoals() {
         goal.order = index;
       });
       goals.value = [...goals.value];
-      console.log('Emitting remove-goal:', { id });
+      //console.log('Emitting remove-goal:', { id });
       emit('remove-goal', { id, timestamp: Date.now() });
     } else {
       console.warn('Goal not found for removal:', id);
@@ -167,7 +167,7 @@ export function useGoals() {
     });
 
     goals.value = newOrder;
-    console.log('Emitting reorder-goals:', { order: newOrder.map(g => g.id) });
+    //console.log('Emitting reorder-goals:', { order: newOrder.map(g => g.id) });
     emit('reorder-goals', { order: newOrder.map(g => g.id), timestamp: Date.now() });
   }
 

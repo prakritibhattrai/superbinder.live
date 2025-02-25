@@ -8,9 +8,9 @@ const eventBus = {
       this.listeners[event].push(callback);
     },
     $emit(event, data) {
-      if (this.listeners[event]) {
+    if (this.listeners[event]) {
         this.listeners[event].forEach(callback => callback(data));
-      }
+    }
     },
     $off(event, callback) {
       if (this.listeners[event]) {

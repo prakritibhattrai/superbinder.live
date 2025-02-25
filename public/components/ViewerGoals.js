@@ -51,7 +51,7 @@ export default {
     </div>
   `,
   setup() {
-    const { goals, addGoal, updateGoal, removeGoal, reorderGoals } = useGoals();
+    const { goals, addGoal, updateGoal, removeGoal, reorderGoals, cleanup } = useGoals();
     const newGoal = Vue.ref('');
     const editingGoal = Vue.ref(null);
     const isDragging = Vue.ref(false);
@@ -136,6 +136,11 @@ export default {
         event.preventDefault();
       }
     }
+
+    Vue.onUnmounted(() => {
+        cleanup();
+      });
+
 
     return { goals, newGoal, editingGoal, debounceAddGoal, handleGoalInput, removeGoal, startDrag, isDragging, draggedIndex, goalsContainer, dragIndicator, preventDefaultIfDragging };
   },
