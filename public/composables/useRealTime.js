@@ -1,18 +1,18 @@
 // composables/useRealTime.js
-import { useConfigs } from './useConfigs.js';
 import eventBus from './eventBus.js';
+import { socketManager } from '../utils/socketManager.js';
 
-const { env } = useConfigs();
-
-// Singleton socket instance
-let socket = null;
-const userUuid = Vue.ref(localStorage.getItem('userUuid') || null);
+const userUuid = Vue.ref(localStorage.getItem('userUuid') || uuidv4());
 const displayName = Vue.ref(localStorage.getItem('displayName') || '');
 const channelName = Vue.ref(localStorage.getItem('channelName') || '');
 const isConnected = Vue.ref(false);
-const activeUsers = Vue.ref({});
+const connectionStatus = Vue.ref('disconnected');
+const activeUsers = Vue.ref(socketManager.activeUsers);
 const connectionError = Vue.ref(null);
 const lastMessageTimestamp = Vue.ref(0);
+
+// Tolerance for timestamp differences (in milliseconds, e.g., 5 seconds)
+const TIMESTAMP_TOLERANCE = 5000;
 
 const sessionInfo = Vue.computed(() => ({
   userUuid: userUuid.value,
@@ -23,130 +23,6 @@ const sessionInfo = Vue.computed(() => ({
 }));
 
 export function useRealTime() {
-  function initializeSocket() {
-    if (socket) {
-      if (socket.connected) {
-        console.log('Socket already connected, reusing existing connection');
-        isConnected.value = true;
-        return;
-      } else {
-        console.log('Cleaning up stale socket');
-        socket.disconnect();
-        socket = null;
-      }
-    }
-
-    const apiUrl = env.value.API_URL;
-    socket = io(apiUrl, {
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 3000,
-      reconnectionDelayMax: 5000,
-      randomizationFactor: 0.5,
-      timeout: 20000,
-      transports: ['websocket'],
-      path: '/socket.io',
-    });
-
-    socket.on('connect', () => {
-      isConnected.value = true;
-      connectionError.value = null;
-      console.log(`Connected to server with UUID: ${userUuid.value}, Socket ID: ${socket.id}`);
-      if (channelName.value && displayName.value) {
-        socket.emit('join-channel', {
-          userUuid: userUuid.value,
-          displayName: displayName.value,
-          channelName: channelName.value,
-        });
-      }
-    });
-
-    socket.on('disconnect', (reason) => {
-      isConnected.value = false;
-      stopHeartbeat();
-      console.log(`Disconnected from server: ${reason}`);
-      if (reason === 'io server disconnect' || reason === 'transport close') {
-        connectionError.value = `Disconnected: ${reason}`;
-        reconnect();
-      }
-    });
-
-    socket.on('connect_error', (error) => {
-      isConnected.value = false;
-      connectionError.value = `Connection failed: ${error.message}`;
-      console.error('Connection error:', error);
-    });
-
-    socket.on('message', (data) => {
-      const parsedData = typeof data === 'string' ? JSON.parse(data) : data;
-      handleMessage(parsedData);
-    });
-  }
-
-  function connect(channel, name) {
-    if (!userUuid.value) {
-      userUuid.value = uuidv4();
-      localStorage.setItem('userUuid', userUuid.value);
-    }
-
-    displayName.value = name;
-    channelName.value = channel;
-    localStorage.setItem('displayName', name);
-    localStorage.setItem('channelName', channel);
-
-    initializeSocket();
-  }
-
-  function disconnect() {
-    if (socket && socket.connected) {
-      socket.emit('leave-channel', { userUuid: userUuid.value, channelName: channelName.value });
-      socket.disconnect();
-      isConnected.value = false;
-      stopHeartbeat();
-      socket = null;
-      connectionError.value = null;
-    }
-  }
-
-  function emit(event, data) {
-    if (socket && socket.connected) {
-      const payload = {
-        userUuid: userUuid.value,
-        channelName: channelName.value,
-        timestamp: Date.now(),
-        type: event,
-        ...data,
-      };
-      socket.emit('message', payload);
-    } else {
-      console.error('Socket not connected. Queuing message:', event, data);
-      connectionError.value = 'Cannot send: Not connected';
-    }
-  }
-
-  function reconnect() {
-    if (!isConnected.value) {
-      console.log('Attempting to reconnect...');
-      disconnect();
-      connect(channelName.value, displayName.value);
-    }
-  }
-
-  let heartbeatInterval = null;
-  function startHeartbeat() {
-    stopHeartbeat();
-    heartbeatInterval = setInterval(() => {
-      emit('heartbeat', { type: 'ping' });
-    }, 5000);
-  }
-
-  function stopHeartbeat() {
-    if (heartbeatInterval) {
-      clearInterval(heartbeatInterval);
-      heartbeatInterval = null;
-    }
-  }
-
   function handleMessage(data) {
     if (typeof data !== 'object' || !data.type) {
       console.error('Invalid message format: Missing type or not an object', data);
@@ -155,131 +31,168 @@ export function useRealTime() {
 
     const processedData = {
       ...data,
-      timestamp: data.timestamp || Date.now(),
+      timestamp: data.serverTimestamp || data.timestamp || Date.now(), // Prefer server timestamp
     };
 
     if (['user-list', 'user-joined'].includes(processedData.type)) {
       console.log(`Processing critical update: ${processedData.type}`);
-    } else if (processedData.timestamp <= lastMessageTimestamp.value) {
-      console.log('Ignoring outdated message:', processedData);
-      return;
+    } else {
+      const timeDiff = processedData.timestamp - lastMessageTimestamp.value;
+      if (processedData.timestamp < lastMessageTimestamp.value - TIMESTAMP_TOLERANCE) {
+        console.warn('Ignoring outdated message (beyond tolerance):', processedData, `Time difference: ${timeDiff}ms`);
+        return;
+      }
     }
-    lastMessageTimestamp.value = processedData.timestamp;
+    lastMessageTimestamp.value = Math.max(lastMessageTimestamp.value, processedData.timestamp);
 
     console.log(`Received ${processedData.type} from ${processedData.userUuid || 'server'}:`, processedData);
 
     switch (processedData.type) {
+      case 'init-state':
+        console.log('Received initial state:', processedData.state);
+        eventBus.$emit('sync-history-data', processedData.state);
+        break;
       case 'user-list':
-        activeUsers.value = processedData.users;
-        eventBus.$emit('user-list', processedData.users);
+        activeUsers.value = processedData.users || {};
+        if (!activeUsers.value[userUuid.value] && userUuid.value) {
+          activeUsers.value = {
+            ...activeUsers.value,
+            [userUuid.value]: {
+              displayName: displayName.value,
+              color: generateRandomColor(),
+              joinedAt: Date.now(),
+            },
+          };
+        }
+        eventBus.$emit('user-list', activeUsers.value);
         break;
       case 'user-joined':
         activeUsers.value = {
           ...activeUsers.value,
           [processedData.userUuid]: {
             displayName: processedData.displayName,
-            color: processedData.color || generateRandomColor(), // Ensure color exists
+            color: processedData.color || generateRandomColor(),
+            joinedAt: processedData.timestamp || Date.now(),
           },
         };
         eventBus.$emit('user-joined', processedData);
         break;
-      case 'request-history':
-        const history = {
-          //   documents: useDocuments().documents.value,
-          //   clips: useClips().clips.value,
-          //   messages: useChat().messages.value,
-          //   goals: useGoals().goals.value,
-          //   questions: useQuestions().questions.value,
-        };
-        emit('history-snapshot', { requesterUuid: processedData.requesterUuid, history });
-        break;
-      case 'history-snapshot':
-        eventBus.$emit('history-snapshot', processedData.history);
-        break;
-      case 'chat-draft':
-        eventBus.$emit('chat-draft', { userUuid: processedData.userUuid, text: processedData.text });
-        break;
-      case 'chat-message':
-        eventBus.$emit('chat-message', { userUuid: processedData.userUuid, text: processedData.text, color: processedData.color });
-        break;
-      case 'agent-message':
-        eventBus.$emit('agent-message', { agentId: processedData.agentId, text: processedData.text, color: processedData.color });
-        break;
-      case 'add-document':
-        eventBus.$emit('add-document', processedData.document);
-        break;
-      case 'remove-document':
-        eventBus.$emit('remove-document', { documentId: processedData.documentId });
-        break;
-      case 'rename-document':
-        eventBus.$emit('rename-document', { documentId: processedData.documentId, newName: processedData.newName });
+      case 'upload-to-cloud-success':
+        console.log('State uploaded to server successfully');
+        eventBus.$emit('upload-to-cloud-success', processedData);
         break;
       case 'add-goal':
-        eventBus.$emit('add-goal', processedData.goal);
+        eventBus.$emit('add-goal', processedData);
         break;
       case 'update-goal':
-        eventBus.$emit('update-goal', { id: processedData.id, text: processedData.text });
+        eventBus.$emit('update-goal', processedData);
         break;
       case 'remove-goal':
-        eventBus.$emit('remove-goal', { id: processedData.id });
+        eventBus.$emit('remove-goal', processedData);
         break;
       case 'reorder-goals':
-        eventBus.$emit('reorder-goals', { order: processedData.order });
-        break;
-      case 'add-question':
-        eventBus.$emit('add-question', processedData.question);
-        break;
-      case 'update-question':
-        eventBus.$emit('update-question', { id: processedData.id, text: processedData.text });
-        break;
-      case 'remove-question':
-        eventBus.$emit('remove-question', { id: processedData.id });
-        break;
-      case 'reorder-questions':
-        eventBus.$emit('reorder-questions', { order: processedData.order });
-        break;
-      case 'add-answer':
-        eventBus.$emit('add-answer', { questionId: processedData.questionId, answer: processedData.answer });
-        break;
-      case 'update-answer':
-        eventBus.$emit('update-answer', { questionId: processedData.questionId, answerId: processedData.answerId, text: processedData.text });
-        break;
-      case 'remove-answer':
-        eventBus.$emit('remove-answer', { questionId: processedData.questionId, answerId: processedData.answerId });
-        break;
-      case 'reorder-answers':
-        eventBus.$emit('reorder-answers', { questionId: processedData.questionId, order: processedData.order });
-        break;
-      case 'vote-answer':
-        eventBus.$emit('vote-answer', { questionId: processedData.questionId, answerId: processedData.answerId, vote: processedData.vote });
-        break;
-      case 'question-draft':
-        eventBus.$emit('question-draft', { id: processedData.id, text: processedData.text });
-        break;
-      case 'answer-draft':
-        eventBus.$emit('answer-draft', { questionId: processedData.questionId, answerId: processedData.answerId, text: processedData.text });
-        break;
-      case 'update-tab':
-        eventBus.$emit('update-tab', { tab: processedData.tab });
+        eventBus.$emit('reorder-goals', processedData);
         break;
       case 'add-agent':
-        eventBus.$emit('add-agent', processedData.agent);
+        eventBus.$emit('add-agent', processedData);
         break;
       case 'update-agent':
-        eventBus.$emit('update-agent', processedData.agent);
+        eventBus.$emit('update-agent', processedData);
         break;
       case 'remove-agent':
-        eventBus.$emit('remove-agent', { name: processedData.name });
+        eventBus.$emit('remove-agent', processedData);
         break;
+      case 'chat-message':
+        eventBus.$emit('chat-message', processedData);
+        break;
+      case 'add-clip':
+        eventBus.$emit('add-clip', processedData);
+        break;
+      case 'remove-clip':
+        eventBus.$emit('remove-clip', processedData);
+        break;
+      case 'add-document':
+        eventBus.$emit('add-document', processedData);
+        break;
+      case 'remove-document':
+        eventBus.$emit('remove-document', processedData);
+        break;
+      case 'rename-document':
+        eventBus.$emit('rename-document', processedData);
+        break;
+      case 'add-question':
+        eventBus.$emit('add-question', processedData);
+        break;
+      case 'update-question':
+        eventBus.$emit('update-question', processedData);
+        break;
+      case 'remove-question':
+        eventBus.$emit('remove-question', processedData);
+        break;
+      case 'reorder-questions':
+        eventBus.$emit('reorder-questions', processedData);
+        break;
+      case 'add-artifact':
+        eventBus.$emit('add-artifact', processedData);
+        break;
+      case 'remove-artifact':
+        eventBus.$emit('remove-artifact', processedData);
+        break;
+      case 'add-transcript':
+        eventBus.$emit('add-transcript', processedData);
+        break;
+      case 'remove-transcript':
+        eventBus.$emit('remove-transcript', processedData);
+        break;
+      case 'room-lock-toggle':
       case 'pong':
-        console.log('Heartbeat pong received');
-        break;
       case 'error':
-        console.error('Server error:', processedData.message);
-        connectionError.value = processedData.message;
+        eventBus.$emit(processedData.type, processedData);
+        break;
+      case 'ping':
+        eventBus.$emit('ping', processedData);
         break;
       default:
         console.warn('Unhandled message type:', processedData.type);
+    }
+  }
+
+  function handleStatusChange(status, error) {
+    connectionStatus.value = status;
+    isConnected.value = status === 'connected';
+    connectionError.value = error;
+    if (error) console.error('Connection status changed:', error);
+  }
+
+  function connect(channel, name) {
+    userUuid.value = localStorage.getItem('userUuid') || uuidv4();
+    localStorage.setItem('userUuid', userUuid.value);
+    displayName.value = name;
+    channelName.value = channel;
+    localStorage.setItem('displayName', name);
+    localStorage.setItem('channelName', channel);
+
+    socketManager.initializeSocket(channelName.value, userUuid.value, displayName.value, handleMessage, handleStatusChange);
+  }
+
+  function disconnect() {
+    socketManager.disconnect(channelName.value, userUuid.value);
+  }
+
+  function emit(event, data) {
+    socketManager.emit(event, data, channelName.value, userUuid.value);
+  }
+
+  function reconnect() {
+    if (!isConnected.value) {
+      console.log('Attempting to reconnect...');
+      socketManager.reconnect(channelName.value, userUuid.value, displayName.value, handleMessage, handleStatusChange);
+    }
+  }
+
+  function loadSession() {
+    if (userUuid.value && displayName.value && channelName.value) {
+      socketManager.initializeSocket(channelName.value, userUuid.value, displayName.value, handleMessage, handleStatusChange);
     }
   }
 
@@ -291,7 +204,7 @@ export function useRealTime() {
     }
     return color;
   }
-  
+
   function on(event, callback) {
     eventBus.$on(event, callback);
   }
@@ -300,18 +213,39 @@ export function useRealTime() {
     eventBus.$off(event, callback);
   }
 
-  function loadSession() {
-    if (userUuid.value && displayName.value && channelName.value) {
-      initializeSocket();
-    }
+  function cleanup() {
+    off('init-state');
+    off('user-list');
+    off('user-joined');
+    off('add-goal');
+    off('update-goal');
+    off('remove-goal');
+    off('reorder-goals');
+    off('add-agent');
+    off('update-agent');
+    off('remove-agent');
+    off('chat-message');
+    off('add-clip');
+    off('remove-clip');
+    off('add-document');
+    off('remove-document');
+    off('rename-document');
+    off('add-question');
+    off('update-question');
+    off('remove-question');
+    off('reorder-questions');
+    off('add-artifact');
+    off('remove-artifact');
+    off('add-transcript');
+    off('remove-transcript');
   }
 
   return {
-    socket,
     userUuid,
     displayName,
     channelName,
     isConnected,
+    connectionStatus,
     activeUsers,
     connectionError,
     sessionInfo,
@@ -322,5 +256,6 @@ export function useRealTime() {
     on,
     off,
     loadSession,
+    cleanup,
   };
 }

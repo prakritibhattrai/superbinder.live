@@ -1,9 +1,18 @@
 // components/Binder.js
 import { useRealTime } from '../composables/useRealTime.js';
+import { useHistory } from '../composables/useHistory.js';
 import SessionSetup from './SessionSetup.js';
-import Uploads from './Uploads.js'; // Renamed DocumentSidebar.js
+import Uploads from './Uploads.js';
 import Viewer from './Viewer.js';
 import ChatPanel from './ChatPanel.js';
+import { useAgents } from '../composables/useAgents.js';
+import { useChat } from '../composables/useChat.js';
+import { useClips } from '../composables/useClips.js';
+import { useDocuments } from '../composables/useDocuments.js';
+import { useGoals } from '../composables/useGoals.js';
+import { useQuestions } from '../composables/useQuestions.js';
+import { useArtifacts } from '../composables/useArtifacts.js';
+import { useTranscripts } from '../composables/useTranscripts.js';
 
 export default {
   name: 'Binder',
@@ -20,11 +29,11 @@ export default {
           </div>
           <div class="flex items-center space-x-2 sm:ml-auto">
             <button @click="resetSession" class="p-2 text-white hover:text-purple-400" title="Reset Session">
-              <i class="pi pi-refresh text-xl"></i>
+              <i class="pi pi-sign-out text-xl"></i>
             </button>
             <button @click="toggleRoomLock" class="p-2 text-white hover:text-purple-400" :class="{ 'text-green-500': !isRoomLocked, 'text-red-500': isRoomLocked }" title="Toggle Room Lock">
-              <i v-if = "!isRoomLocked" class="pi pi-unlock text-xl"></i>
-              <i v-if = "isRoomLocked" class="pi pi-lock text-xl"></i>
+              <i v-if="!isRoomLocked" class="pi pi-unlock text-xl"></i>
+              <i v-if="isRoomLocked" class="pi pi-lock text-xl"></i>
             </button>
             <button @click="uploadToCloud" class="p-2 text-white hover:text-purple-400" title="Upload to Cloud">
               <i class="pi pi-cloud-upload text-xl"></i>
@@ -32,6 +41,7 @@ export default {
             <button @click="downloadFromCloud" class="p-2 text-white hover:text-purple-400" title="Download from Cloud">
               <i class="pi pi-cloud-download text-xl"></i>
             </button>
+            <span :class="connectionStatusClass" class="inline-block w-4 h-4 rounded-full mr-2" title="Connection Status"></span>
           </div>
         </div>
 
@@ -43,9 +53,7 @@ export default {
               :key="tab"
               @click="activeTab = tab; updateActiveTab(tab)"
               class="px-4 py-2 rounded-t-lg font-semibold transition-colors whitespace-nowrap"
-              :class="[
-                activeTab === tab ? 'bg-gray-800 text-purple-400' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-              ]"
+              :class="[activeTab === tab ? 'bg-gray-800 text-purple-400' : 'bg-gray-700 text-gray-300 hover:bg-gray-600']"
             >
               {{ tab }}
             </button>
@@ -71,9 +79,7 @@ export default {
                 :key="subTab"
                 @click="activeDocumentSubTab = subTab; updateActiveTab('Documents')"
                 class="px-4 py-2 rounded-t-lg font-semibold transition-colors whitespace-nowrap"
-                :class="[
-                  activeDocumentSubTab === subTab ? 'bg-gray-800 text-purple-400' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                ]"
+                :class="[activeDocumentSubTab === subTab ? 'bg-gray-800 text-purple-400' : 'bg-gray-700 text-gray-300 hover:bg-gray-600']"
               >
                 {{ subTab }}
               </button>
@@ -115,7 +121,8 @@ export default {
     </div>
   `,
   setup() {
-    const { sessionInfo, connect, loadSession, disconnect, isConnected, connectionError, activeUsers, emit, on, off } = useRealTime();
+    const { sessionInfo, connect, loadSession, disconnect, isConnected, connectionStatus, activeUsers, emit, on, off, connectionError } = useRealTime();
+    const { gatherLocalHistory, syncChannelData } = useHistory();
     const sessionReady = Vue.ref(false);
     const activeTab = Vue.ref('Goals');
     const activeDocumentSubTab = Vue.ref('Uploads');
@@ -126,6 +133,15 @@ export default {
     const chatWidth = Vue.ref(300);
     const { userUuid, displayName, channelName } = useRealTime();
 
+    const { agents, cleanup: cleanupAgents } = useAgents();
+    const { messages, cleanup: cleanupChat } = useChat();
+    const { clips, cleanup: cleanupClips } = useClips();
+    const { documents, cleanup: cleanupDocuments } = useDocuments();
+    const { goals, cleanup: cleanupGoals } = useGoals();
+    const { questions, cleanup: cleanupQuestions } = useQuestions();
+    const { artifacts, cleanup: cleanupArtifacts } = useArtifacts();
+    const { transcripts, cleanup: cleanupTranscripts } = useTranscripts();
+
     const isMobile = Vue.ref(window.matchMedia('(max-width: 640px)').matches);
     const updateIsMobile = () => {
       isMobile.value = window.matchMedia('(max-width: 640px)').matches;
@@ -135,6 +151,10 @@ export default {
     const participantCount = Vue.computed(() => Object.keys(activeUsers.value || {}).length);
 
     function handleSetupComplete({ channel, name }) {
+      if (!isValidChannelName(channel)) {
+        console.error('Invalid channel name. Use alphanumeric characters and underscores only.');
+        return;
+      }
       connect(channel, name);
       sessionReady.value = true;
     }
@@ -159,11 +179,70 @@ export default {
     }
 
     function uploadToCloud() {
-      console.log('Uploading channel data to cloud:', { channelName: channelName.value, participants: activeUsers.value });
+      if (isConnected.value && channelName.value) {
+        emit('upload-to-cloud', { channelName: channelName.value, userUuid: userUuid.value });
+      } else {
+        console.error('Cannot upload to cloud: Not connected or no channel name');
+        alert('Please ensure you are connected to a channel before uploading to the cloud.');
+      }
     }
 
     function downloadFromCloud() {
-      console.log('Downloading channel data from cloud for:', channelName.value);
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'application/json';
+      input.onchange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const data = JSON.parse(event.target.result);
+            if (data && Object.keys(data).length > 0) {
+              syncChannelData(data);
+            } else {
+              console.warn('Empty or undefined data downloaded, skipping sync:', data);
+            }
+          };
+          reader.readAsText(file);
+        }
+      };
+      input.click();
+    }
+
+    // function saveLocally(data) {
+    //   if (data && Object.keys(data).length > 0) {
+    //     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    //     const url = window.URL.createObjectURL(blob);
+    //     const link = document.createElement('a');
+    //     link.href = url;
+    //     link.download = `channel_${channelName.value}_data.json`;
+    //     document.body.appendChild(link);
+    //     link.click();
+    //     document.body.removeChild(link);
+    //     window.URL.revokeObjectURL(url);
+    //   } else {
+    //     console.warn('Empty or undefined data, skipping save:', data);
+    //   }
+    // }
+
+    function handleBlur() {
+      if (isConnected.value && channelName.value) {
+        const updatedUsers = { ...activeUsers.value };
+        delete updatedUsers[userUuid.value];
+        activeUsers.value = updatedUsers;
+        emit('leave-channel', { userUuid: userUuid.value, channelName: channelName.value });
+        disconnect();
+      }
+    }
+
+    function handleFocus() {
+      if (channelName.value && displayName.value) {
+        if (!isValidChannelName(channelName.value)) {
+          console.error('Invalid channel name. Use alphanumeric characters and underscores only.');
+          return;
+        }
+        connect(channelName.value, displayName.value);
+      }
     }
 
     function updateActiveTab(tab) {
@@ -182,14 +261,35 @@ export default {
       chatWidth.value = Math.max(200, newWidth);
     }
 
-    function handleTabUpdate(data) {
-      if (data.tab) {
-        activeTab.value = data.tab;
-        if (data.subTab && data.tab === 'Documents') {
-          activeDocumentSubTab.value = data.subTab;
-        }
-      }
+    const connectionStatusClass = Vue.computed(() => {
+      if (connectionStatus.value === 'connected') return 'bg-green-500';
+      if (connectionStatus.value === 'connecting') return 'bg-yellow-500';
+      return 'bg-gray-500';
+    });
+
+    function isValidChannelName(channelName) {
+      if (!channelName || typeof channelName !== 'string') return false;
+      return /^[a-zA-Z0-9_]+$/.test(channelName);
     }
+
+    on('user-list', (users) => {
+      activeUsers.value = users || {};
+    });
+
+    on('upload-to-cloud-success', (data) => {
+      console.log('Upload to cloud successful:', data.message);
+      const history = gatherLocalHistory();
+      // if (history && Object.keys(history).length > 0) {
+      //   saveLocally(history);
+      // }
+    });
+
+    on('error', (errorData) => {
+      if (errorData.message.includes('Failed to save state')) {
+        console.error('Upload to cloud failed:', errorData.message);
+        alert(`Upload failed: ${errorData.message}`);
+      }
+    });
 
     on('room-lock-toggle', (data) => {
       if (data.channelName === channelName.value) {
@@ -197,22 +297,41 @@ export default {
       }
     });
 
+    Vue.onMounted(() => {
+      window.addEventListener('blur', handleBlur);
+      window.addEventListener('focus', handleFocus);
+      if (sessionInfo.value.userUuid && sessionInfo.value.channelName && sessionInfo.value.displayName) {
+        if (!isValidChannelName(sessionInfo.value.channelName)) {
+          console.error('Invalid channel name in session info. Use alphanumeric characters and underscores only.');
+          sessionReady.value = false;
+          return;
+        }
+        loadSession();
+        sessionReady.value = true;
+      }
+    });
+
     Vue.onUnmounted(() => {
-      off('update-tab', handleTabUpdate);
+      window.removeEventListener('blur', handleBlur);
+      window.removeEventListener('focus', handleFocus);
+      off('user-list');
+      off('upload-to-cloud-success');
+      off('error');
       off('room-lock-toggle');
+      cleanupAgents();
+      cleanupChat();
+      cleanupClips();
+      cleanupDocuments();
+      cleanupGoals();
+      cleanupQuestions();
+      cleanupArtifacts();
+      cleanupTranscripts();
       window.removeEventListener('resize', updateIsMobile);
     });
 
     Vue.watch(isConnected, (connected) => {
       if (!connected && sessionReady.value) {
         console.warn('Connection lost:', connectionError.value);
-      }
-    });
-
-    Vue.onMounted(() => {
-      if (sessionInfo.value.userUuid && sessionInfo.value.channelName && sessionInfo.value.displayName) {
-        loadSession();
-        sessionReady.value = true;
       }
     });
 
@@ -229,6 +348,8 @@ export default {
       downloadFromCloud,
       sessionInfo,
       isConnected,
+      connectionStatus,
+      connectionStatusClass,
       connectionError,
       channelName,
       participantCount,

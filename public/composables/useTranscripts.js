@@ -1,69 +1,72 @@
 // composables/useTranscripts.js
+import { useRealTime } from './useRealTime.js';
 
-export const useTranscripts = () => {
-  // Supported formats for validation
-  const SUPPORTED_EXTENSIONS = [
-    // Audio extensions
-    '.mp3', '.wav', '.ogg', '.webm', '.m4a', '.aac', 
-    '.aiff', '.flac', '.caf', '.mka', '.wma',
-    // Video extensions
-    '.mp4', '.ogv', '.mov', '.mkv', '.avi', 
-    '.wmv', '.3gp', '.flv'
-  ];
+const transcripts = Vue.ref([]);
+const { emit, on, off } = useRealTime();
 
-  // Validation helper
-  const validateFile = (file) => {
-    const errors = [];
-    
-    if (!file) {
-      errors.push('No file selected');
-      return errors;
+// Store event handlers for cleanup
+const eventHandlers = new WeakMap();
+
+export function useTranscripts() {
+  function handleAddTranscript(transcript) {
+    if (!transcripts.value.some(t => t.id === transcript.id)) {
+      transcripts.value.push(transcript);
     }
+  }
 
-    const maxSize = 1000 * 1024 * 1024; // 1GB
-    if (file.size > maxSize) {
-      errors.push('File size exceeds 1GB limit');
+  function handleUpdateTranscript(updatedTranscript) {
+    const index = transcripts.value.findIndex(t => t.id === updatedTranscript.id);
+    if (index !== -1) {
+      transcripts.value = transcripts.value.map((t, i) => i === index ? updatedTranscript : t);
     }
+  }
 
-    const extension = '.' + file.name.split('.').pop().toLowerCase();
-    if (!SUPPORTED_EXTENSIONS.includes(extension)) {
-      errors.push('Unsupported file format. Please upload a valid audio or video file');
+  function handleRemoveTranscript({ id }) {
+    transcripts.value = transcripts.value.filter(t => t.id !== id);
+  }
+
+  // Register event listeners and store handlers for cleanup
+  const addTranscriptHandler = on('add-transcript', handleAddTranscript);
+  const updateTranscriptHandler = on('update-transcript', handleUpdateTranscript);
+  const removeTranscriptHandler = on('remove-transcript', handleRemoveTranscript);
+
+  // Store handlers in a WeakMap for cleanup
+  eventHandlers.set(useTranscripts, {
+    addTranscript: addTranscriptHandler,
+    updateTranscript: updateTranscriptHandler,
+    removeTranscript: removeTranscriptHandler,
+  });
+
+  function addTranscript(id, data) {
+    const transcript = { id, data };
+    transcripts.value.push(transcript);
+    emit('add-transcript', { transcript });
+  }
+
+  function updateTranscript(id, data) {
+    const transcript = { id, data };
+    const index = transcripts.value.findIndex(t => t.id === id);
+    if (index !== -1) {
+      transcripts.value = transcripts.value.map((t, i) => i === index ? transcript : t);
     }
+    emit('update-transcript', { transcript });
+  }
 
-    return errors;
-  };
+  function removeTranscript(id) {
+    transcripts.value = transcripts.value.filter(t => t.id !== id);
+    emit('remove-transcript', { id });
+  }
 
-  // Core transcription function
-  const transcribeFile = async (file, onProgress) => {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-      const response = await axios.post('/api/transcribe', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        onUploadProgress: (progressEvent) => {
-          if (progressEvent.total && onProgress) {
-            const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-            onProgress(progress);
-          }
-        }
-      });
-
-      return {
-        success: true,
-        data: response.data.transcript
-      };
-    } catch (err) {
-      return {
-        success: false,
-        error: err.response?.data?.error || err.message || 'Transcription failed'
-      };
+  // Cleanup function for components to call
+  function cleanup() {
+    const handlers = eventHandlers.get(useTranscripts);
+    if (handlers) {
+      off('add-transcript', handlers.addTranscript);
+      off('update-transcript', handlers.updateTranscript);
+      off('remove-transcript', handlers.removeTranscript);
+      eventHandlers.delete(useTranscripts);
     }
-  };
+  }
 
-  return {
-    validateFile,
-    transcribeFile,
-    SUPPORTED_EXTENSIONS
-  };
-};
+  return { transcripts, addTranscript, updateTranscript, removeTranscript, cleanup };
+}

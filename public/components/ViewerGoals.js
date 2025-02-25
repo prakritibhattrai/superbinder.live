@@ -8,11 +8,11 @@ export default {
       <div class="flex gap-2 mb-4">
         <input
           v-model="newGoal"
-          @keypress.enter="addGoalLocal"
+          @keypress.enter.prevent="debounceAddGoal"
           class="flex-1 p-2 bg-gray-700 text-white rounded-lg border border-gray-600 focus:border-purple-500 focus:outline-none"
           placeholder="Add a new goal..."
         />
-        <button @click="addGoalLocal" class="py-2 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg">Add</button>
+        <button @click.prevent="debounceAddGoal" class="py-2 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg">Add</button>
       </div>
       <div class="space-y-2 relative" ref="goalsContainer">
         <!-- Reorder Indicator Line -->
@@ -32,7 +32,7 @@ export default {
           <span class="text-gray-400 mr-2" :class="{ 'unselectable': isDragging }">⋮⋮</span>
           <div
             contenteditable="true"
-            @input="updateGoal(goal.id, $event.target.textContent)"
+            @input="handleGoalInput(goal.id, $event)"
             class="flex-1 text-white min-w-0 break-words"
             :class="{ 'bg-gray-600': editingGoal === goal.id }"
             @focus="editingGoal = goal.id"
@@ -57,17 +57,33 @@ export default {
     const isDragging = Vue.ref(false);
     const draggedIndex = Vue.ref(null);
     const goalsContainer = Vue.ref(null);
-    const dragIndicator = Vue.ref(null); // Store indicator position (y-coordinate)
+    const dragIndicator = Vue.ref(null);
+    let debounceTimer = null;
 
-    function addGoalLocal() {
-      if (newGoal.value.trim()) {
-        addGoal(newGoal.value);
-        newGoal.value = '';
+    function debounceAddGoal() {
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+      }
+      debounceTimer = setTimeout(() => {
+        if (newGoal.value && newGoal.value.trim()) {
+          addGoal(newGoal.value.trim());
+          newGoal.value = '';
+        }
+        debounceTimer = null;
+      }, 300); // 300ms debounce to prevent multiple rapid triggers
+    }
+
+    function handleGoalInput(id, event) {
+      const newText = event.target.textContent.trim();
+      if (newText) {
+        updateGoal(id, newText);
+      } else {
+        // If text is empty, remove the goal
+        removeGoal(id);
       }
     }
 
     function startDrag(index, event) {
-      // Prevent default selection behavior for the entire drag operation
       event.preventDefault();
       isDragging.value = true;
       draggedIndex.value = index;
@@ -84,23 +100,21 @@ export default {
       }
 
       function handleDrag(e) {
-        e.preventDefault(); // Prevent default selection during drag
+        e.preventDefault();
         const y = e.type === 'mousemove' ? e.clientY : e.touches[0].clientY;
         const rect = container.getBoundingClientRect();
-        const goalHeight = goalElement.offsetHeight; // Get actual height of goal element
-        const offsetY = y - rect.top - goalHeight / 2; // Center the drag position
-        const newIndex = Math.max(0, Math.min(goals.value.length - 1, Math.floor(offsetY / (goalHeight + 8)))); // Account for 8px space-y-2
+        const goalHeight = goalElement.offsetHeight;
+        const offsetY = y - rect.top - goalHeight / 2;
+        const newIndex = Math.max(0, Math.min(goals.value.length - 1, Math.floor(offsetY / (goalHeight + 8))));
 
-        // Smooth animation using requestAnimationFrame
         requestAnimationFrame(() => {
-          if (Math.abs(y - lastY) > 5) { // Debounce to reduce jitter
+          if (Math.abs(y - lastY) > 5) {
             if (newIndex !== index) {
               reorderGoals(goals.value[index].id, newIndex);
               draggedIndex.value = newIndex;
-              index = newIndex; // Update index after reorder
+              index = newIndex;
             }
-            // Update drag indicator position, accounting for padding and spacing
-            dragIndicator.value = { y: newIndex * (goalHeight + 8) + 4 }; // +4 for half of space-y-2 (8px) to center the line
+            dragIndicator.value = { y: newIndex * (goalHeight + 8) + 4 };
             lastY = y;
           }
         });
@@ -109,7 +123,7 @@ export default {
       function stopDrag() {
         isDragging.value = false;
         draggedIndex.value = null;
-        dragIndicator.value = null; // Hide indicator on drop
+        dragIndicator.value = null;
         document.removeEventListener('mousemove', handleDrag);
         document.removeEventListener('mouseup', stopDrag);
         document.removeEventListener('touchmove', handleDrag);
@@ -117,13 +131,12 @@ export default {
       }
     }
 
-    // Prevent default behavior on the contenteditable div only if dragging, but allow editing
     function preventDefaultIfDragging(event) {
       if (isDragging.value) {
         event.preventDefault();
       }
     }
 
-    return { goals, newGoal, editingGoal, addGoalLocal, updateGoal, removeGoal, startDrag, isDragging, draggedIndex, goalsContainer, dragIndicator, preventDefaultIfDragging };
+    return { goals, newGoal, editingGoal, debounceAddGoal, handleGoalInput, removeGoal, startDrag, isDragging, draggedIndex, goalsContainer, dragIndicator, preventDefaultIfDragging };
   },
 };

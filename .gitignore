@@ -6,3 +6,6 @@
 
 /uploads/*
 !/uploads/placeholder.txt
+
+/channels/*
+!/channels/placeholder.txt

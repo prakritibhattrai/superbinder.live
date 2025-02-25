@@ -4,6 +4,9 @@ import { useRealTime } from './useRealTime.js';
 const agents = Vue.ref([]);
 const { userUuid, displayName, emit, on, off } = useRealTime();
 
+// Store event handlers for cleanup
+const eventHandlers = new WeakMap();
+
 export function useAgents() {
   function handleAddAgent(agent) {
     if (!agents.value.some(a => a.uuid === agent.uuid)) {
@@ -27,14 +30,16 @@ export function useAgents() {
     agents.value = agents.value.filter(a => a.uuid !== uuid);
   }
 
-  on('add-agent', handleAddAgent);
-  on('update-agent', handleUpdateAgent);
-  on('remove-agent', handleRemoveAgent);
+  // Register event listeners and store handlers for cleanup
+  const addAgentHandler = on('add-agent', handleAddAgent);
+  const updateAgentHandler = on('update-agent', handleUpdateAgent);
+  const removeAgentHandler = on('remove-agent', handleRemoveAgent);
 
-  Vue.onUnmounted(() => {
-    off('add-agent', handleAddAgent);
-    off('update-agent', handleUpdateAgent);
-    off('remove-agent', handleRemoveAgent);
+  // Store handlers in a WeakMap for cleanup
+  eventHandlers.set(useAgents, {
+    addAgent: addAgentHandler,
+    updateAgent: updateAgentHandler,
+    removeAgent: removeAgentHandler,
   });
 
   function addAgent(name, description, imageUrl, systemPrompts = [], userPrompts = []) {
@@ -102,5 +107,16 @@ export function useAgents() {
     emit('remove-agent', { uuid });
   }
 
-  return { agents, addAgent, updateAgent, removeAgent };
+  // Cleanup function for components to call
+  function cleanup() {
+    const handlers = eventHandlers.get(useAgents);
+    if (handlers) {
+      off('add-agent', handlers.addAgent);
+      off('update-agent', handlers.updateAgent);
+      off('remove-agent', handlers.removeAgent);
+      eventHandlers.delete(useAgents);
+    }
+  }
+
+  return { agents, addAgent, updateAgent, removeAgent, cleanup };
 }

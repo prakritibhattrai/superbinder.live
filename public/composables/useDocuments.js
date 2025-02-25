@@ -6,6 +6,9 @@ const documents = Vue.ref([]);
 const selectedDocument = Vue.ref(null); // New ref for selected document
 const { emit, on, off } = useRealTime();
 
+// Store event handlers for cleanup
+const eventHandlers = new WeakMap();
+
 export function useDocuments() {
   function handleAddDocument(doc) {
     if (!documents.value.some(d => d.id === doc.id)) {
@@ -35,16 +38,18 @@ export function useDocuments() {
     documents.value = (history.documents || []).sort((a, b) => a.timestamp - b.timestamp); // Maintain order by timestamp
   }
 
-  on('add-document', handleAddDocument);
-  on('remove-document', handleRemoveDocument);
-  on('rename-document', handleRenameDocument);
-  on('history-snapshot', handleSnapshot);
+  // Register event listeners and store handlers for cleanup
+  const addDocumentHandler = on('add-document', handleAddDocument);
+  const removeDocumentHandler = on('remove-document', handleRemoveDocument);
+  const renameDocumentHandler = on('rename-document', handleRenameDocument);
+  const snapshotHandler = on('history-snapshot', handleSnapshot);
 
-  Vue.onUnmounted(() => {
-    off('add-document', handleAddDocument);
-    off('remove-document', handleRemoveDocument);
-    off('rename-document', handleRenameDocument);
-    off('history-snapshot', handleSnapshot);
+  // Store handlers in a WeakMap for cleanup
+  eventHandlers.set(useDocuments, {
+    addDocument: addDocumentHandler,
+    removeDocument: removeDocumentHandler,
+    renameDocument: renameDocumentHandler,
+    snapshot: snapshotHandler,
   });
 
   // Centralized file processing and addition
@@ -72,5 +77,17 @@ export function useDocuments() {
     selectedDocument.value = doc;
   }
 
-  return { documents, selectedDocument, addDocument, removeDocument, setSelectedDocument };
+  // Cleanup function for components to call
+  function cleanup() {
+    const handlers = eventHandlers.get(useDocuments);
+    if (handlers) {
+      off('add-document', handlers.addDocument);
+      off('remove-document', handlers.removeDocument);
+      off('rename-document', handlers.renameDocument);
+      off('history-snapshot', handlers.snapshot);
+      eventHandlers.delete(useDocuments);
+    }
+  }
+
+  return { documents, selectedDocument, addDocument, removeDocument, setSelectedDocument, cleanup };
 }

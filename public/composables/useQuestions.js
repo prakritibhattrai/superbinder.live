@@ -5,6 +5,9 @@ const questions = Vue.ref([]);
 const drafts = Vue.ref({}); // Track typing indicators for questions and answers
 const { emit, on, off } = useRealTime();
 
+// Store event handlers for cleanup
+const eventHandlers = new WeakMap();
+
 export function useQuestions() {
   function handleAddQuestion(question) {
     if (!questions.value.some(q => q.id === question.id)) {
@@ -89,30 +92,32 @@ export function useQuestions() {
     drafts.value[questionId][answerId] = text;
   }
 
-  on('add-question', handleAddQuestion);
-  on('update-question', handleUpdateQuestion);
-  on('remove-question', handleRemoveQuestion);
-  on('reorder-questions', handleReorderQuestions);
-  on('add-answer', handleAddAnswer);
-  on('update-answer', handleUpdateAnswer);
-  on('remove-answer', handleRemoveAnswer);
-  on('reorder-answers', handleReorderAnswers);
-  on('vote-answer', handleVoteAnswer);
-  on('question-draft', handleQuestionDraft);
-  on('answer-draft', handleAnswerDraft);
+  // Register event listeners and store handlers for cleanup
+  const addQuestionHandler = on('add-question', handleAddQuestion);
+  const updateQuestionHandler = on('update-question', handleUpdateQuestion);
+  const removeQuestionHandler = on('remove-question', handleRemoveQuestion);
+  const reorderQuestionsHandler = on('reorder-questions', handleReorderQuestions);
+  const addAnswerHandler = on('add-answer', handleAddAnswer);
+  const updateAnswerHandler = on('update-answer', handleUpdateAnswer);
+  const removeAnswerHandler = on('remove-answer', handleRemoveAnswer);
+  const reorderAnswersHandler = on('reorder-answers', handleReorderAnswers);
+  const voteAnswerHandler = on('vote-answer', handleVoteAnswer);
+  const questionDraftHandler = on('question-draft', handleQuestionDraft);
+  const answerDraftHandler = on('answer-draft', handleAnswerDraft);
 
-  Vue.onUnmounted(() => {
-    off('add-question', handleAddQuestion);
-    off('update-question', handleUpdateQuestion);
-    off('remove-question', handleRemoveQuestion);
-    off('reorder-questions', handleReorderQuestions);
-    off('add-answer', handleAddAnswer);
-    off('update-answer', handleUpdateAnswer);
-    off('remove-answer', handleRemoveAnswer);
-    off('reorder-answers', handleReorderAnswers);
-    off('vote-answer', handleVoteAnswer);
-    off('question-draft', handleQuestionDraft);
-    off('answer-draft', handleAnswerDraft);
+  // Store handlers in a WeakMap for cleanup
+  eventHandlers.set(useQuestions, {
+    addQuestion: addQuestionHandler,
+    updateQuestion: updateQuestionHandler,
+    removeQuestion: removeQuestionHandler,
+    reorderQuestions: reorderQuestionsHandler,
+    addAnswer: addAnswerHandler,
+    updateAnswer: updateAnswerHandler,
+    removeAnswer: removeAnswerHandler,
+    reorderAnswers: reorderAnswersHandler,
+    voteAnswer: voteAnswerHandler,
+    questionDraft: questionDraftHandler,
+    answerDraft: answerDraftHandler,
   });
 
   function addQuestion(text) {
@@ -227,6 +232,25 @@ export function useQuestions() {
     addAnswer(questionId, text);
   }
 
+  // Cleanup function for components to call
+  function cleanup() {
+    const handlers = eventHandlers.get(useQuestions);
+    if (handlers) {
+      off('add-question', handlers.addQuestion);
+      off('update-question', handlers.updateQuestion);
+      off('remove-question', handlers.removeQuestion);
+      off('reorder-questions', handlers.reorderQuestions);
+      off('add-answer', handlers.addAnswer);
+      off('update-answer', handlers.updateAnswer);
+      off('remove-answer', handlers.removeAnswer);
+      off('reorder-answers', handlers.reorderAnswers);
+      off('vote-answer', handlers.voteAnswer);
+      off('question-draft', handlers.questionDraft);
+      off('answer-draft', handlers.answerDraft);
+      eventHandlers.delete(useQuestions);
+    }
+  }
+
   return {
     questions,
     drafts,
@@ -245,5 +269,6 @@ export function useQuestions() {
     stopAnswerDraft,
     addQuestionProgrammatically,
     addAnswerProgrammatically,
+    cleanup,
   };
 }
