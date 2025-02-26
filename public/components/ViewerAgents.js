@@ -1,9 +1,9 @@
 // components/ViewerAgents.js
 import { useAgents } from '../composables/useAgents.js';
 import { useRealTime } from '../composables/useRealTime.js';
-import { useDocuments } from '../composables/useDocuments.js'; // For document names
-import { useGoals } from '../composables/useGoals.js'; // For goals
-import { useClips } from '../composables/useClips.js'; // For clips (assuming useClips exists)
+import { useDocuments } from '../composables/useDocuments.js';
+import { useGoals } from '../composables/useGoals.js';
+import { useClips } from '../composables/useClips.js';
 
 export default {
   name: 'ViewerAgents',
@@ -27,7 +27,7 @@ export default {
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div
             v-for="agent in filteredAgents"
-            :key="agent.uuid"  
+            :key="agent.id"  
             class="p-4 bg-gray-700 rounded-lg flex flex-col items-center cursor-pointer hover:bg-gray-600 transition-colors"
             @click="openEditModal(agent)"
           >
@@ -37,7 +37,7 @@ export default {
               <button @click.stop="openEditModal(agent)" class="py-1 px-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
                 Edit
               </button>
-              <button @click.stop="confirmDelete(agent.uuid)" class="py-1 px-2 bg-red-600 hover:bg-red-700 text-white rounded-lg">
+              <button @click.stop="confirmDelete(agent.id)" class="py-1 px-2 bg-red-600 hover:bg-red-700 text-white rounded-lg">
                 Delete
               </button>
             </div>
@@ -209,27 +209,22 @@ export default {
     const { displayName } = useRealTime();
     const { documents } = useDocuments();
     const { goals } = useGoals();
-    const { clips } = useClips(); // Assuming useClips exists; if not, implement or mock it
+    const { clips } = useClips();
     const filterQuery = Vue.ref('');
     const isModalOpen = Vue.ref(false);
     const isPromptModalOpen = Vue.ref(false);
     const editingAgent = Vue.ref(null);
-    const agentUuid = Vue.ref(''); // Track agent UUID for updates
+    const agentId = Vue.ref(''); // Changed from agentUuid to agentId
     const agentName = Vue.ref('');
     const agentDescription = Vue.ref('');
     const agentImageUrl = Vue.ref('');
     const systemPrompts = Vue.ref([]);
     const userPrompts = Vue.ref([]);
     const nameError = Vue.ref('');
-    const promptType = Vue.ref(''); // Track prompt type for editing
-    const promptIndex = Vue.ref(null); // Track which prompt is being edited
-    const promptContent = Vue.ref(''); // Content for the prompt editing modal
+    const promptType = Vue.ref('');
+    const promptIndex = Vue.ref(null);
+    const promptContent = Vue.ref('');
     const defaultImage = Vue.computed(() => '../assets/aiagent.png');
-
-    // Watch for updates to agents to ensure reactivity
-    Vue.watch(agents, (newAgents) => {
-      console.log('Agents updated:', newAgents);
-    }, { deep: true });
 
     const filteredAgents = Vue.computed(() => {
       if (!filterQuery.value) return agents.value;
@@ -250,7 +245,7 @@ export default {
     }
 
     function filterAgents() {
-      // Already handled by filteredAgents computed property
+      // Handled by filteredAgents computed property
     }
 
     function clearFilter() {
@@ -260,7 +255,7 @@ export default {
     function openEditModal(agent = null) {
       if (agent) {
         editingAgent.value = agent;
-        agentUuid.value = agent.uuid; // Store the agent's UUID
+        agentId.value = agent.id; // Changed from uuid to id
         agentName.value = agent.name;
         agentDescription.value = agent.description;
         agentImageUrl.value = agent.imageUrl;
@@ -268,7 +263,7 @@ export default {
         userPrompts.value = [...agent.userPrompts];
       } else {
         editingAgent.value = null;
-        agentUuid.value = uuidv4(); // Generate a new UUID for a new agent
+        agentId.value = uuidv4(); // Still using uuidv4() for unique IDs
         agentName.value = '';
         agentDescription.value = '';
         agentImageUrl.value = '';
@@ -297,9 +292,7 @@ export default {
     function updatePromptType(type, index, newType) {
       const prompts = type === 'system' ? systemPrompts : userPrompts;
       prompts.value[index].type = newType;
-      if (newType !== 'text') {
-        prompts.value[index].content = ''; // Reset content for non-text types
-      }
+      if (newType !== 'text') prompts.value[index].content = '';
     }
 
     function openPromptModal(type, index, content) {
@@ -327,69 +320,34 @@ export default {
     function saveAgent() {
       if (nameError.value) return;
       if (editingAgent.value) {
-        updateAgent(agentUuid.value, agentName.value, agentDescription.value, agentImageUrl.value, systemPrompts.value, userPrompts.value);
-        // Update local state reactively using spread operator
-        const index = agents.value.findIndex(a => a.uuid === agentUuid.value);
-        if (index !== -1) {
-          agents.value = agents.value.map((a, i) =>
-            i === index
-              ? {
-                  uuid: agentUuid.value,
-                  name: agentName.value,
-                  createdBy: displayName.value,
-                  description: agentDescription.value,
-                  imageUrl: agentImageUrl.value,
-                  systemPrompts: systemPrompts.value,
-                  userPrompts: userPrompts.value,
-                }
-              : a
-          );
-        }
+        updateAgent(agentId.value, agentName.value, agentDescription.value, agentImageUrl.value, systemPrompts.value, userPrompts.value);
       } else {
         addAgent(agentName.value, agentDescription.value, agentImageUrl.value, systemPrompts.value, userPrompts.value);
       }
       closeModal();
     }
 
-    function confirmDelete(uuid) {
+    function confirmDelete(id) { // Changed from uuid to id
       if (confirm('Are you sure you want to delete this agent?')) {
-        removeAgent(uuid);
+        removeAgent(id);
       }
     }
-
-    // Handle real-time updates for agents within setup
-    const { on, off } = useRealTime();
-    Vue.onMounted(() => {
-      on('update-agent', handleUpdateAgent);
-    });
 
     Vue.onUnmounted(() => {
-      off('update-agent', handleUpdateAgent);
+      // Cleanup handled by useAgents
     });
-
-    function handleUpdateAgent(updatedAgent) {
-      const index = agents.value.findIndex(a => a.uuid === updatedAgent.uuid);
-      if (index !== -1) {
-        // Use spread operator for reactivity in Vue 3
-        agents.value = agents.value.map((a, i) =>
-          i === index ? updatedAgent : a
-        );
-      } else {
-        console.warn(`Agent with UUID ${updatedAgent.uuid} not found for update`);
-      }
-    }
 
     return {
       agents,
       documents,
       goals,
-      clips, // Ensure clips are available or mock if not implemented
+      clips,
       filterQuery,
       filteredAgents,
       isModalOpen,
       isPromptModalOpen,
       editingAgent,
-      agentUuid,
+      agentId, // Changed from agentUuid to agentId
       agentName,
       agentDescription,
       agentImageUrl,
@@ -413,7 +371,6 @@ export default {
       saveAgent,
       confirmDelete,
       validateName,
-      handleUpdateAgent,
     };
   },
 };

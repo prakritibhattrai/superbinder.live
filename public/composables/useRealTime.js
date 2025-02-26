@@ -47,8 +47,6 @@ export function useRealTime() {
     }
     lastMessageTimestamp.value = Math.max(lastMessageTimestamp.value, processedData.timestamp);
 
-    // console.log(`Received ${processedData.type} from ${processedData.userUuid || 'server'}:`, processedData);
-
     switch (processedData.type) {
       case 'init-state':
         console.log('Received initial state:', processedData.state);
@@ -61,7 +59,7 @@ export function useRealTime() {
             ...activeUsers.value,
             [userUuid.value]: {
               displayName: displayName.value,
-              color: userColor.value || '#808080', // Use stored color or default to grey, no random generation
+              color: userColor.value || '#808080', // Use stored color or default to grey
               joinedAt: Date.now(),
             },
           };
@@ -73,7 +71,7 @@ export function useRealTime() {
           ...activeUsers.value,
           [processedData.userUuid]: {
             displayName: processedData.displayName,
-            color: processedData.color || (processedData.userUuid === userUuid.value ? userColor.value : '#808080'), // Use stored color for self, default for others
+            color: processedData.color || (processedData.userUuid === userUuid.value ? userColor.value : '#808080'), // Use stored color for self
             joinedAt: processedData.timestamp || Date.now(),
           },
         };
@@ -185,6 +183,7 @@ export function useRealTime() {
     const b = Math.floor(Math.random() * 129);
     return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
   }
+
   function connect(channel, name) {
     userUuid.value = sessionStorage.getItem('userUuid') || uuidv4();
     sessionStorage.setItem('userUuid', userUuid.value);
@@ -192,33 +191,30 @@ export function useRealTime() {
     channelName.value = channel;
     sessionStorage.setItem('displayName', name);
     sessionStorage.setItem('channelName', channel);
-  
-    // Handle user color registration and persistence entirely in useRealTime.js
+
+    // Handle user color registration and persistence
     const storedColor = sessionStorage.getItem(`userColor_${channel}_${userUuid.value}`);
     if (!storedColor) {
-      userColor.value = generateMutedDarkColor(); // Generate random muted dark color
+      userColor.value = generateMutedDarkColor();
       sessionStorage.setItem(`userColor_${channel}_${userUuid.value}`, userColor.value);
     } else {
       userColor.value = storedColor;
     }
-  
+
     console.log('Emitting join-channel with:', {
       userUuid: userUuid.value,
       displayName: displayName.value,
       channelName: channelName.value,
       color: userColor.value,
     });
-  
-    // Ensure userColor is fully reactive before emitting
+
     Vue.nextTick(() => {
       socketManager.initializeSocket(channelName.value, userUuid.value, displayName.value, handleMessage, handleStatusChange, { color: userColor.value });
     });
   }
-  
+
   function disconnect() {
     socketManager.disconnect(channelName.value, userUuid.value);
-    // Optionally clear color for this channel if joining a new one later (uncomment if needed)
-    // sessionStorage.removeItem(`userColor_${channelName.value}_${userUuid.value}`);
   }
 
   function emit(event, data) {
@@ -228,12 +224,11 @@ export function useRealTime() {
   function reconnect() {
     if (!isConnected.value) {
       console.log('Attempting to reconnect...');
-      // Load existing color for this channel and userUuid
       const storedColor = sessionStorage.getItem(`userColor_${channelName.value}_${userUuid.value}`);
       if (storedColor) {
         userColor.value = storedColor;
       } else {
-        userColor.value = '#808080'; // Default to grey if no color is stored
+        userColor.value = '#808080';
         sessionStorage.setItem(`userColor_${channelName.value}_${userUuid.value}`, userColor.value);
       }
       socketManager.reconnect(channelName.value, userUuid.value, displayName.value, handleMessage, handleStatusChange);
@@ -243,12 +238,11 @@ export function useRealTime() {
 
   function loadSession() {
     if (userUuid.value && displayName.value && channelName.value) {
-      // Load existing color for this channel and userUuid
       const storedColor = sessionStorage.getItem(`userColor_${channelName.value}_${userUuid.value}`);
       if (storedColor) {
         userColor.value = storedColor;
       } else {
-        userColor.value = '#808080'; // Default to grey if no color is stored
+        userColor.value = '#808080';
         sessionStorage.setItem(`userColor_${channelName.value}_${userUuid.value}`, userColor.value);
       }
       socketManager.initializeSocket(channelName.value, userUuid.value, displayName.value, handleMessage, handleStatusChange);
@@ -312,6 +306,6 @@ export function useRealTime() {
     off,
     loadSession,
     cleanup,
-    userColor, // Expose userColor for components to access if needed
+    userColor,
   };
 }
