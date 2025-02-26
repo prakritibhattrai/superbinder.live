@@ -1,15 +1,17 @@
-// composables/useRealTime.js
 import eventBus from './eventBus.js';
 import { socketManager } from '../utils/socketManager.js';
 
-const userUuid = Vue.ref(localStorage.getItem('userUuid') || uuidv4());
-const displayName = Vue.ref(localStorage.getItem('displayName') || '');
-const channelName = Vue.ref(localStorage.getItem('channelName') || '');
+const userUuid = Vue.ref(sessionStorage.getItem('userUuid') || uuidv4());
+const displayName = Vue.ref(sessionStorage.getItem('displayName') || '');
+const channelName = Vue.ref(sessionStorage.getItem('channelName') || '');
 const isConnected = Vue.ref(false);
 const connectionStatus = Vue.ref('disconnected');
 const activeUsers = Vue.ref(socketManager.activeUsers);
 const connectionError = Vue.ref(null);
 const lastMessageTimestamp = Vue.ref(0);
+
+// Load and persist user color from sessionStorage, specific to the channel
+const userColor = Vue.ref(sessionStorage.getItem(`userColor_${channelName.value}_${userUuid.value}`) || '');
 
 // Tolerance for timestamp differences (in milliseconds, e.g., 5 seconds)
 const TIMESTAMP_TOLERANCE = 5000;
@@ -59,7 +61,7 @@ export function useRealTime() {
             ...activeUsers.value,
             [userUuid.value]: {
               displayName: displayName.value,
-              color: generateRandomColor(),
+              color: userColor.value || '#808080', // Use stored color or default to grey, no random generation
               joinedAt: Date.now(),
             },
           };
@@ -71,7 +73,7 @@ export function useRealTime() {
           ...activeUsers.value,
           [processedData.userUuid]: {
             displayName: processedData.displayName,
-            color: processedData.color || generateRandomColor(),
+            color: processedData.color || (processedData.userUuid === userUuid.value ? userColor.value : '#808080'), // Use stored color for self, default for others
             joinedAt: processedData.timestamp || Date.now(),
           },
         };
@@ -80,6 +82,18 @@ export function useRealTime() {
       case 'upload-to-cloud-success':
         console.log('State uploaded to server successfully');
         eventBus.$emit('upload-to-cloud-success', processedData);
+        break;
+      case 'add-chat':
+        eventBus.$emit('add-chat', processedData);
+        break;
+      case 'draft-chat':
+        eventBus.$emit('draft-chat', processedData);
+        break;
+      case 'update-chat':
+        eventBus.$emit('update-chat', processedData);
+        break;
+      case 'delete-chat':
+        eventBus.$emit('delete-chat', processedData);
         break;
       case 'add-goal':
         eventBus.$emit('add-goal', processedData);
@@ -164,45 +178,82 @@ export function useRealTime() {
     if (error) console.error('Connection status changed:', error);
   }
 
+  function generateMutedDarkColor() {
+    // Muted dark mode colors: low RGB values (0-128) for dark, muted tones
+    const r = Math.floor(Math.random() * 129); // 0-128
+    const g = Math.floor(Math.random() * 129);
+    const b = Math.floor(Math.random() * 129);
+    return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+  }
   function connect(channel, name) {
-    userUuid.value = localStorage.getItem('userUuid') || uuidv4();
-    localStorage.setItem('userUuid', userUuid.value);
+    userUuid.value = sessionStorage.getItem('userUuid') || uuidv4();
+    sessionStorage.setItem('userUuid', userUuid.value);
     displayName.value = name;
     channelName.value = channel;
-    localStorage.setItem('displayName', name);
-    localStorage.setItem('channelName', channel);
-
-    socketManager.initializeSocket(channelName.value, userUuid.value, displayName.value, handleMessage, handleStatusChange);
+    sessionStorage.setItem('displayName', name);
+    sessionStorage.setItem('channelName', channel);
+  
+    // Handle user color registration and persistence entirely in useRealTime.js
+    const storedColor = sessionStorage.getItem(`userColor_${channel}_${userUuid.value}`);
+    if (!storedColor) {
+      userColor.value = generateMutedDarkColor(); // Generate random muted dark color
+      sessionStorage.setItem(`userColor_${channel}_${userUuid.value}`, userColor.value);
+    } else {
+      userColor.value = storedColor;
+    }
+  
+    console.log('Emitting join-channel with:', {
+      userUuid: userUuid.value,
+      displayName: displayName.value,
+      channelName: channelName.value,
+      color: userColor.value,
+    });
+  
+    // Ensure userColor is fully reactive before emitting
+    Vue.nextTick(() => {
+      socketManager.initializeSocket(channelName.value, userUuid.value, displayName.value, handleMessage, handleStatusChange, { color: userColor.value });
+    });
   }
-
+  
   function disconnect() {
     socketManager.disconnect(channelName.value, userUuid.value);
+    // Optionally clear color for this channel if joining a new one later (uncomment if needed)
+    // sessionStorage.removeItem(`userColor_${channelName.value}_${userUuid.value}`);
   }
 
   function emit(event, data) {
-    socketManager.emit(event, data, channelName.value, userUuid.value);
+    socketManager.emit(event, { ...data, userUuid: userUuid.value, color: userColor.value }, channelName.value, userUuid.value);
   }
 
   function reconnect() {
     if (!isConnected.value) {
       console.log('Attempting to reconnect...');
+      // Load existing color for this channel and userUuid
+      const storedColor = sessionStorage.getItem(`userColor_${channelName.value}_${userUuid.value}`);
+      if (storedColor) {
+        userColor.value = storedColor;
+      } else {
+        userColor.value = '#808080'; // Default to grey if no color is stored
+        sessionStorage.setItem(`userColor_${channelName.value}_${userUuid.value}`, userColor.value);
+      }
       socketManager.reconnect(channelName.value, userUuid.value, displayName.value, handleMessage, handleStatusChange);
+      socketManager.emit('join-channel', { userUuid: userUuid.value, displayName: displayName.value, channelName: channelName.value, color: userColor.value }, channelName.value, userUuid.value);
     }
   }
 
   function loadSession() {
     if (userUuid.value && displayName.value && channelName.value) {
+      // Load existing color for this channel and userUuid
+      const storedColor = sessionStorage.getItem(`userColor_${channelName.value}_${userUuid.value}`);
+      if (storedColor) {
+        userColor.value = storedColor;
+      } else {
+        userColor.value = '#808080'; // Default to grey if no color is stored
+        sessionStorage.setItem(`userColor_${channelName.value}_${userUuid.value}`, userColor.value);
+      }
       socketManager.initializeSocket(channelName.value, userUuid.value, displayName.value, handleMessage, handleStatusChange);
+      socketManager.emit('join-channel', { userUuid: userUuid.value, displayName: displayName.value, channelName: channelName.value, color: userColor.value }, channelName.value, userUuid.value);
     }
-  }
-
-  function generateRandomColor() {
-    const letters = '0123456789ABCDEF';
-    let color = '#';
-    for (let i = 0; i < 6; i++) {
-      color += letters[Math.floor(Math.random() * 16)];
-    }
-    return color;
   }
 
   function on(event, callback) {
@@ -217,6 +268,10 @@ export function useRealTime() {
     off('init-state');
     off('user-list');
     off('user-joined');
+    off('add-chat');
+    off('draft-chat');
+    off('update-chat');
+    off('delete-chat');
     off('add-goal');
     off('update-goal');
     off('remove-goal');
@@ -257,5 +312,6 @@ export function useRealTime() {
     off,
     loadSession,
     cleanup,
+    userColor, // Expose userColor for components to access if needed
   };
 }

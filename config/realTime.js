@@ -2,19 +2,25 @@ const { Server } = require('socket.io');
 const fs = require('fs').promises;
 const path = require('path');
 
-const channels = new Map(); // Store channel state as { users: {}, sockets: {}, state: {}, locked: boolean }
+const channels = new Map(); // Store channel state as { users: {}, sockets: {}, state: { goals: [], chat: [], ... }, locked: boolean }
 
 // Configuration for each entity type and their corresponding event names
 const entityConfigs = {
   goals: { idKey: 'id', requiredFields: ['id', 'text'], orderField: 'order', events: { add: 'add-goal', update: 'update-goal', remove: 'remove-goal', reorder: 'reorder-goals' } },
   agents: { idKey: 'id', requiredFields: ['id'], orderField: null, events: { add: 'add-agent', update: 'update-agent', remove: 'remove-agent', reorder: null } },
-  messages: { idKey: 'id', requiredFields: ['id'], orderField: null, events: { add: 'chat-message', update: null, remove: null, reorder: null } },
+  chat: { idKey: 'id', requiredFields: ['id', 'text'], orderField: null, events: { add: 'add-chat', update: 'update-chat', remove: 'delete-chat', draft: 'draft-chat' } }, // Updated for new events
   clips: { idKey: 'id', requiredFields: ['id'], orderField: null, events: { add: 'add-clip', update: null, remove: 'remove-clip', reorder: null } },
   documents: { idKey: 'id', requiredFields: ['id'], orderField: null, events: { add: 'add-document', update: 'rename-document', remove: 'remove-document', reorder: null } },
   questions: { idKey: 'id', requiredFields: ['id'], orderField: 'order', events: { add: 'add-question', update: 'update-question', remove: 'remove-question', reorder: 'reorder-questions' } },
   artifacts: { idKey: 'id', requiredFields: ['id'], orderField: null, events: { add: 'add-artifact', update: null, remove: 'remove-artifact', reorder: null } },
   transcripts: { idKey: 'id', requiredFields: ['id'], orderField: null, events: { add: 'add-transcript', update: null, remove: 'remove-transcript', reorder: null } },
 };
+
+// Function to get file path for a specific entity type
+function getEntityFilePath(channelName, entityType) {
+  const channelDir = path.join(__dirname, '../channels');
+  return path.join(channelDir, `${channelName}_${entityType}.json`);
+}
 
 function validateJoinData(data) {
   return data && data.userUuid && data.displayName && data.channelName && isValidChannelName(data.channelName);
@@ -35,62 +41,33 @@ function isValidChannelName(channelName) {
   return /^[a-zA-Z0-9_]+$/.test(channelName);
 }
 
-async function loadStateFromServer(channelName) {
+async function loadStateFromServer(channelName, entityType) {
   try {
-    const channelDir = path.join(__dirname, '../channels');
-    const filePath = path.join(channelDir, `${channelName}.json`);
-    const data = await fs.readFile(filePath, 'utf8').then(JSON.parse).catch(() => ({
-      agents: [],
-      messages: [],
-      clips: [],
-      documents: [],
-      goals: [],
-      questions: [],
-      artifacts: [],
-      transcripts: [],
-    }));
+    const filePath = getEntityFilePath(channelName, entityType);
+    const data = await fs.readFile(filePath, 'utf8').then(JSON.parse).catch(() => []);
     return data;
   } catch (error) {
-    console.error('Error loading state from server:', error);
-    return {
-      agents: [],
-      messages: [],
-      clips: [],
-      documents: [],
-      goals: [],
-      questions: [],
-      artifacts: [],
-      transcripts: [],
-    };
+    console.error(`Error loading ${entityType} state from server for channel ${channelName}:`, error);
+    return []; // Return empty array for any entity type if there's an error
   }
 }
 
-async function saveStateToServer(channelName, state) {
+async function saveStateToServer(channelName, entityType, state) {
   try {
-    const channelDir = path.join(__dirname, '../channels');
-    await fs.mkdir(channelDir, { recursive: true });
-    const filePath = path.join(channelDir, `${channelName}.json`);
+    const filePath = getEntityFilePath(channelName, entityType);
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
     await fs.writeFile(filePath, JSON.stringify(state, null, 2));
-    console.log(`Channel ${channelName} state saved to ${filePath}`);
+    console.log(`Channel ${channelName} ${entityType} state saved to ${filePath}`);
   } catch (error) {
-    console.error('Error saving state to server:', error);
+    console.error(`Error saving ${entityType} state to server for channel ${channelName}:`, error);
   }
-}
-
-function getRandomColor() {
-  const letters = '0123456789ABCDEF';
-  let color = '#';
-  for (let i = 0; i < 6; i++) {
-    color += letters[Math.floor(Math.random() * 16)];
-  }
-  return color;
 }
 
 function broadcastToChannel(channelName, type, data, excludeUuid = null) {
   if (channels.has(channelName)) {
     const channel = channels.get(channelName);
     const serverTimestamp = Date.now();
-    const payload = { type, timestamp: serverTimestamp, serverTimestamp, ...data };
+    const payload = { type, timestamp: serverTimestamp, serverTimestamp, ...data }; // Use serverTimestamp for consistency
     for (const userUuid in channel.sockets) {
       if (userUuid !== excludeUuid) {
         channel.sockets[userUuid].emit('message', payload);
@@ -130,7 +107,7 @@ function validateEntity(payload, entityType, operation) {
 
   switch (operation) {
     case 'add':
-      const addEntity = { id: payload.id, text: payload.text };
+      const addEntity = { id: payload.id, text: payload.text, color: payload.color };
       if (!addEntity || typeof addEntity !== 'object') {
         return { valid: false, message: `Invalid ${entityType} data: missing entity object` };
       }
@@ -161,6 +138,12 @@ function validateEntity(payload, entityType, operation) {
         return { valid: false, message: `Invalid ${entityType} order format: expected non-empty array of IDs` };
       }
       return { valid: true, message: '' };
+    case 'draft':
+      const draftEntity = { id: payload.id, text: payload.text };
+      if (!draftEntity || typeof draftEntity.text !== 'string') {
+        return { valid: false, message: `Invalid ${entityType} draft data: missing or invalid text` };
+      }
+      return { valid: true, message: '' };
     default:
       return { valid: false, message: `Unknown operation: ${operation}` };
   }
@@ -168,14 +151,25 @@ function validateEntity(payload, entityType, operation) {
 
 // Generic state update functions for CRUD operations
 function updateCreateState(state, payload, entityType) {
-  const entity = { id: payload.id, text: payload.text };
+  const entity = { 
+    id: payload.id, 
+    text: payload.text, 
+    color: payload.color, 
+    userUuid: payload.userUuid, 
+    timestamp: payload.timestamp || Date.now() // Default to server timestamp if not provided
+  };
   const config = entityConfigs[entityType];
   const order = config.orderField ? state.length : undefined;
   state.push({ ...entity, [config.orderField || '']: order });
 }
 
 function updateUpdateState(state, payload, entityType) {
-  const entity = { id: payload.id, text: payload.text };
+  const entity = { 
+    id: payload.id, 
+    text: payload.text, 
+    userUuid: payload.userUuid, 
+    timestamp: payload.timestamp || Date.now() // Use server timestamp for updates
+  };
   const config = entityConfigs[entityType];
   const index = state.findIndex(item => item[config.idKey] === entity[config.idKey]);
   if (index !== -1) {
@@ -208,7 +202,32 @@ function updateReorderState(state, payload, entityType) {
 
 // Universal CRUD handler
 async function handleCrudOperation(channelName, userUuid, type, payload, socket) {
-  const [operation, entityType] = type.split('-');
+  // Map the full event type to operation and entity type without splitting
+  let operation, entityType;
+  for (const [et, config] of Object.entries(entityConfigs)) {
+    if (config.events.add === type) {
+      operation = 'add';
+      entityType = et;
+      break;
+    } else if (config.events.update === type) {
+      operation = 'update';
+      entityType = et;
+      break;
+    } else if (config.events.remove === type) {
+      operation = 'remove';
+      entityType = et;
+      break;
+    } else if (config.events.reorder === type) {
+      operation = 'reorder';
+      entityType = et;
+      break;
+    } else if (config.events.draft === type) {
+      operation = 'draft';
+      entityType = et;
+      break;
+    }
+  }
+
   if (!operation || !entityType) {
     socket.emit('message', { type: 'error', message: `Invalid event type: ${type}`, timestamp: Date.now() });
     return;
@@ -239,7 +258,7 @@ async function handleCrudOperation(channelName, userUuid, type, payload, socket)
   }
   let state = channel.state[entityType];
 
-  let updateFunc;
+  let updateFunc, shouldSave = true;
   switch (operation) {
     case 'add':
       updateFunc = updateCreateState;
@@ -253,12 +272,28 @@ async function handleCrudOperation(channelName, userUuid, type, payload, socket)
     case 'reorder':
       updateFunc = updateReorderState;
       break;
+    case 'draft':
+      updateFunc = null; // No state update for draft, just broadcast
+      shouldSave = false;
+      break;
     default:
       socket.emit('message', { type: 'error', message: `Unknown operation: ${operation}`, timestamp: Date.now() });
       return;
   }
 
-  const newState = updateFunc(state, payload, entityType);
+  if (operation === 'draft') {
+    // Broadcast draft-chat with server timestamp, but don't update state or save to JSON
+    const serverTimestamp = Date.now();
+    broadcastToChannel(channelName, 'draft-chat', { 
+      id: payload.id, 
+      userUuid, 
+      text: payload.text, 
+      timestamp: serverTimestamp 
+    }, userUuid);
+    return; // Exit early, no state update or save needed
+  }
+
+  const newState = updateFunc ? updateFunc(state, { ...payload, timestamp: Date.now() }, entityType) : state;
   if (newState !== undefined) {
     channel.state[entityType] = newState;
     state = newState;
@@ -266,13 +301,18 @@ async function handleCrudOperation(channelName, userUuid, type, payload, socket)
 
   const broadcastData = {
     userUuid,
-    ...(operation === 'add' ? { id: payload.id, text: payload.text } : {}),
-    ...(operation === 'update' ? { id: payload.id, text: payload.text } : {}),
-    ...(operation === 'remove' ? { id: payload.id } : {}),
+    id: payload.id, // Ensure id is included in all chat broadcasts
+    ...(operation === 'add' ? { text: payload.text, color: payload.color, timestamp: Date.now() } : {}), // Add timestamp for add
+    ...(operation === 'update' ? { text: payload.text, timestamp: Date.now() } : {}), // Add timestamp for update
+    ...(operation === 'remove' ? {} : {}), // No additional fields for remove
     ...(operation === 'reorder' ? { order: payload.order } : {}),
   };
-  broadcastToChannel(channelName, config.events[operation], broadcastData, userUuid);
-  await saveStateToServer(channelName, channel.state);
+  broadcastToChannel(channelName, type, broadcastData, userUuid);
+
+  // Save state to file only if necessary
+  if (shouldSave) {
+    await saveStateToServer(channelName, entityType, channel.state[entityType]);
+  }
 }
 
 function createRealTimeServers(server, corsOptions) {
@@ -283,7 +323,7 @@ function createRealTimeServers(server, corsOptions) {
     maxHttpBufferSize: 1e8,
   });
 
-  io.on('connection', (socket) => {
+  io.on('connection', async (socket) => {
     console.log(`Client connected: ${socket.id}`);
 
     socket.on('join-channel', async (data) => {
@@ -292,12 +332,17 @@ function createRealTimeServers(server, corsOptions) {
         return;
       }
 
-      const { userUuid, displayName, channelName } = data;
+      const { userUuid, displayName, channelName, color } = data; // Extract color from payload
+
+      console.log("display and color", data)
       socket.join(channelName);
       socket.userUuid = userUuid;
 
       if (!channels.has(channelName)) {
-        const initialState = await loadStateFromServer(channelName);
+        const initialState = {};
+        for (const entityType of Object.keys(entityConfigs)) {
+          initialState[entityType] = await loadStateFromServer(channelName, entityType);
+        }
         channels.set(channelName, {
           users: {},
           sockets: {},
@@ -318,8 +363,9 @@ function createRealTimeServers(server, corsOptions) {
         console.log(`${displayName} (${userUuid}) joined channel ${channelName}`);
       }
 
-      const color = getRandomColor();
-      channel.users[userUuid] = { displayName, color, joinedAt: Date.now() };
+      // Use the color provided by the client, or a default if not provided
+      const userColor = color || '#808080'; // Default to grey if no color is provided
+      channel.users[userUuid] = { displayName, color: userColor, joinedAt: Date.now() };
       channel.sockets[userUuid] = socket;
 
       socket.emit('message', {
@@ -331,7 +377,7 @@ function createRealTimeServers(server, corsOptions) {
       });
 
       broadcastToChannel(channelName, 'user-list', { users: channel.users });
-      broadcastToChannel(channelName, 'user-joined', { userUuid, displayName, color, timestamp: Date.now() });
+      broadcastToChannel(channelName, 'user-joined', { userUuid, displayName, color: userColor, timestamp: Date.now() });
     });
 
     socket.on('leave-channel', (data) => {
@@ -377,77 +423,107 @@ async function handleMessage(data, socket) {
       break;
     case 'pong':
       break;
+    case 'add-chat':
+      await handleCrudOperation(channelName, userUuid, 'add-chat', { 
+        id: payload.id, 
+        text: payload.text, 
+        color: payload.color, 
+        userUuid 
+      }, socket);
+      break;
+    case 'draft-chat':
+      // Handle draft messages (broadcast with server timestamp, but don't save to JSON)
+      const draftTimestamp = Date.now();
+      broadcastToChannel(channelName, 'draft-chat', { 
+        id: payload.id, 
+        userUuid, 
+        text: payload.text, 
+        timestamp: draftTimestamp 
+      }, userUuid);
+      break;
+    case 'update-chat':
+      await handleCrudOperation(channelName, userUuid, 'update-chat', { 
+        id: payload.id, 
+        text: payload.text, 
+        userUuid 
+      }, socket);
+      break;
+    case 'delete-chat':
+      await handleCrudOperation(channelName, userUuid, 'delete-chat', { id: payload.id, userUuid }, socket);
+      break;
     case 'add-goal':
-      await handleCrudOperation(channelName, userUuid, 'add-goals', { id: payload.id, text: payload.text }, socket);
+      await handleCrudOperation(channelName, userUuid, 'add-goal', { id: payload.id, text: payload.text, userUuid }, socket);
       break;
     case 'update-goal':
-      await handleCrudOperation(channelName, userUuid, 'update-goals', { id: payload.id, text: payload.text }, socket);
+      await handleCrudOperation(channelName, userUuid, 'update-goal', { id: payload.id, text: payload.text, userUuid }, socket);
       break;
     case 'remove-goal':
-      await handleCrudOperation(channelName, userUuid, 'remove-goals', { id: payload.id }, socket);
+      await handleCrudOperation(channelName, userUuid, 'remove-goal', { id: payload.id, userUuid }, socket);
       break;
     case 'reorder-goals':
-      await handleCrudOperation(channelName, userUuid, 'reorder-goals', { order: payload.order }, socket);
+      await handleCrudOperation(channelName, userUuid, 'reorder-goals', { order: payload.order, userUuid }, socket);
       break;
     case 'add-agent':
-      await handleCrudOperation(channelName, userUuid, 'add-agents', { agent: payload.agent }, socket);
+      await handleCrudOperation(channelName, userUuid, 'add-agent', { agent: payload.agent, userUuid }, socket);
       break;
     case 'update-agent':
-      await handleCrudOperation(channelName, userUuid, 'update-agents', { agent: payload.agent }, socket);
+      await handleCrudOperation(channelName, userUuid, 'update-agent', { agent: payload.agent, userUuid }, socket);
       break;
     case 'remove-agent':
-      await handleCrudOperation(channelName, userUuid, 'remove-agents', { agentId: payload.agentId }, socket);
-      break;
-    case 'chat-message':
-      await handleCrudOperation(channelName, userUuid, 'add-messages', { message: payload.message }, socket);
+      await handleCrudOperation(channelName, userUuid, 'remove-agent', { agentId: payload.agentId, userUuid }, socket);
       break;
     case 'add-clip':
-      await handleCrudOperation(channelName, userUuid, 'add-clips', { clip: payload.clip }, socket);
+      await handleCrudOperation(channelName, userUuid, 'add-clip', { clip: payload.clip, userUuid }, socket);
       break;
     case 'remove-clip':
-      await handleCrudOperation(channelName, userUuid, 'remove-clips', { clipId: payload.clipId }, socket);
+      await handleCrudOperation(channelName, userUuid, 'remove-clip', { clipId: payload.clipId, userUuid }, socket);
       break;
     case 'add-document':
-      await handleCrudOperation(channelName, userUuid, 'add-documents', { document: payload.document }, socket);
+      await handleCrudOperation(channelName, userUuid, 'add-document', { document: payload.document, userUuid }, socket);
       break;
     case 'remove-document':
-      await handleCrudOperation(channelName, userUuid, 'remove-documents', { documentId: payload.documentId }, socket);
+      await handleCrudOperation(channelName, userUuid, 'remove-document', { documentId: payload.documentId, userUuid }, socket);
       break;
     case 'rename-document':
-      await handleCrudOperation(channelName, userUuid, 'update-documents', { id: payload.documentId, name: payload.name }, socket);
+      await handleCrudOperation(channelName, userUuid, 'rename-document', { id: payload.documentId, name: payload.name, userUuid }, socket);
       break;
     case 'add-question':
-      await handleCrudOperation(channelName, userUuid, 'add-questions', { question: payload.question }, socket);
+      await handleCrudOperation(channelName, userUuid, 'add-question', { question: payload.question, userUuid }, socket);
       break;
     case 'update-question':
-      await handleCrudOperation(channelName, userUuid, 'update-questions', { question: payload.question }, socket);
+      await handleCrudOperation(channelName, userUuid, 'update-question', { question: payload.question, userUuid }, socket);
       break;
     case 'remove-question':
-      await handleCrudOperation(channelName, userUuid, 'remove-questions', { questionId: payload.questionId }, socket);
+      await handleCrudOperation(channelName, userUuid, 'remove-question', { questionId: payload.questionId, userUuid }, socket);
       break;
     case 'reorder-questions':
-      await handleCrudOperation(channelName, userUuid, 'reorder-questions', { order: payload.questions }, socket);
+      await handleCrudOperation(channelName, userUuid, 'reorder-questions', { order: payload.questions, userUuid }, socket);
       break;
     case 'add-artifact':
-      await handleCrudOperation(channelName, userUuid, 'add-artifacts', { artifact: payload.artifact }, socket);
+      await handleCrudOperation(channelName, userUuid, 'add-artifact', { artifact: payload.artifact, userUuid }, socket);
       break;
     case 'remove-artifact':
-      await handleCrudOperation(channelName, userUuid, 'remove-artifacts', { artifactId: payload.artifactId }, socket);
+      await handleCrudOperation(channelName, userUuid, 'remove-artifact', { artifactId: payload.artifactId, userUuid }, socket);
       break;
     case 'add-transcript':
-      await handleCrudOperation(channelName, userUuid, 'add-transcripts', { transcript: payload.transcript }, socket);
+      await handleCrudOperation(channelName, userUuid, 'add-transcript', { transcript: payload.transcript, userUuid }, socket);
       break;
     case 'remove-transcript':
-      await handleCrudOperation(channelName, userUuid, 'remove-transcripts', { transcriptId: payload.transcriptId }, socket);
+      await handleCrudOperation(channelName, userUuid, 'remove-transcript', { transcriptId: payload.transcriptId, userUuid }, socket);
       break;
     case 'room-lock-toggle':
       channel.locked = payload.locked;
-      broadcastToChannel(channelName, type, { channelName, locked: payload.locked });
-      await saveStateToServer(channelName, channel.state);
+      broadcastToChannel(channelName, type, { channelName, locked: payload.locked, userUuid });
+      // Save lock state in all entity files (if needed, or just in a separate lock file)
+      for (const entityType of Object.keys(entityConfigs)) {
+        await saveStateToServer(channelName, entityType, channel.state[entityType]);
+      }
       break;
     case 'upload-to-cloud':
       console.log("Upload to Cloud");
-      await saveStateToServer(channelName, channel.state);
+      for (const entityType of Object.keys(entityConfigs)) {
+        await saveStateToServer(channelName, entityType, channel.state[entityType]);
+      }
       break;
     case 'error':
     case 'unknown':

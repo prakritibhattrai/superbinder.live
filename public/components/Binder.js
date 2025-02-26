@@ -161,9 +161,9 @@ export default {
 
     function resetSession() {
       disconnect();
-      localStorage.removeItem('userUuid');
-      localStorage.removeItem('displayName');
-      localStorage.removeItem('channelName');
+      sessionStorage.removeItem('userUuid');
+      sessionStorage.removeItem('displayName');
+      sessionStorage.removeItem('channelName');
       userUuid.value = null;
       displayName.value = '';
       channelName.value = '';

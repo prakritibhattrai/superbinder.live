@@ -1,4 +1,3 @@
-// components/SessionSetup.js
 import { useRealTime } from '../composables/useRealTime.js';
 
 export default {
@@ -44,7 +43,7 @@ export default {
     const channelName = Vue.ref('');
     const errorMessage = Vue.ref('');
 
-    const { connect, on } = useRealTime();
+    const { connect, on } = useRealTime(); // Removed userColor from destructuring
 
     function submitSetup() {
       if (displayName.value && channelName.value) {

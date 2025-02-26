@@ -7,11 +7,15 @@ let socket = null;
 const activeUsers = {};
 let heartbeatInterval = null;
 
-function initializeSocket(channelName, userUuid, displayName, onMessage, onStatusChange) {
+function initializeSocket(channelName, userUuid, displayName, onMessage, onStatusChange, joinData = {}) {
   if (socket) {
     if (socket.connected) {
       console.log('Socket already connected, reusing existing connection');
       onStatusChange('connected', null);
+      // Emit join-channel with the provided joinData if already connected
+      if (channelName && displayName) {
+        socket.emit('join-channel', { userUuid, displayName, channelName, ...joinData });
+      }
       return;
     } else {
       console.log('Cleaning up stale socket');
@@ -36,7 +40,7 @@ function initializeSocket(channelName, userUuid, displayName, onMessage, onStatu
     console.log(`Connected to server with UUID: ${userUuid}, Socket ID: ${socket.id}`);
     onStatusChange('connected', null);
     if (channelName && displayName) {
-      socket.emit('join-channel', { userUuid, displayName, channelName });
+      socket.emit('join-channel', { userUuid, displayName, channelName, ...joinData });
     }
     startHeartbeat(channelName, userUuid);
   });
@@ -56,7 +60,7 @@ function initializeSocket(channelName, userUuid, displayName, onMessage, onStatu
     if (data.type === 'error') {
       console.error('Received error from server:', data);
       if (data.message === 'Invalid message format' || data.message === 'Invalid channel or user') {
-        reconnect(channelName, userUuid, displayName, onMessage, onStatusChange);
+        reconnect(channelName, userUuid, displayName, onMessage, onStatusChange, joinData);
       }
     }
     onMessage(data);
@@ -87,9 +91,9 @@ function disconnect(channelName, userUuid) {
   }
 }
 
-function reconnect(channelName, userUuid, displayName, onMessage, onStatusChange) {
+function reconnect(channelName, userUuid, displayName, onMessage, onStatusChange, joinData = {}) {
   disconnect(channelName, userUuid);
-  initializeSocket(channelName, userUuid, displayName, onMessage, onStatusChange);
+  initializeSocket(channelName, userUuid, displayName, onMessage, onStatusChange, joinData);
 }
 
 function startHeartbeat(channelName, userUuid) {
@@ -113,3 +117,4 @@ export const socketManager = {
   reconnect,
   activeUsers,
 };
+ 

@@ -35,7 +35,7 @@ export function useHistory() {
     const hasData = Object.keys(data).some(key => Array.isArray(data[key]) && data[key].length > 0);
     if (hasData) {
       useAgents().agents.value = data?.agents || [];
-      useChat().messages.value = data?.messages || [];
+      useChat().messages.value = data?.chat || [];
       useClips().clips.value = data?.clips || [];
       useDocuments().documents.value = data?.documents || [];
       useGoals().goals.value = data?.goals || [];
