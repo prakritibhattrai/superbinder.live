@@ -1,4 +1,3 @@
-// realTime.js
 const { Server } = require('socket.io');
 const fs = require('fs').promises;
 const path = require('path');
@@ -12,6 +11,7 @@ const entityConfigs = {
   clips: { idKey: 'id', requiredFields: ['id'], orderField: null, events: { add: 'add-clip', update: null, remove: 'remove-clip', reorder: null } },
   documents: { idKey: 'id', requiredFields: ['id'], orderField: null, events: { add: 'add-document', update: 'rename-document', remove: 'remove-document', reorder: null } },
   questions: { idKey: 'id', requiredFields: ['id'], orderField: 'order', events: { add: 'add-question', update: 'update-question', remove: 'remove-question', reorder: 'reorder-questions' } },
+  answers: { idKey: 'id', requiredFields: ['id', 'questionId'], orderField: null, events: { add: 'add-answer', update: 'update-answer', remove: 'delete-answer', vote: 'vote-answer' } },
   artifacts: { idKey: 'id', requiredFields: ['id'], orderField: null, events: { add: 'add-artifact', update: null, remove: 'remove-artifact', reorder: null } },
   transcripts: { idKey: 'id', requiredFields: ['id'], orderField: null, events: { add: 'add-transcript', update: null, remove: 'remove-transcript', reorder: null } },
 };
@@ -106,7 +106,7 @@ function validateEntity(payload, entityType, operation) {
   switch (operation) {
     case 'add':
     case 'update':
-      const entity = payload.agent || payload.clip || payload.document || payload.question || payload.artifact || payload.transcript || payload;
+      const entity = payload.agent || payload.clip || payload.document || payload.question || payload.artifact || payload.transcript || payload.answer || payload;
       if (!entity || typeof entity !== 'object') {
         return { valid: false, message: `Invalid ${entityType} data for ${operation}: missing entity object` };
       }
@@ -117,13 +117,18 @@ function validateEntity(payload, entityType, operation) {
       }
       return { valid: true, message: '' };
     case 'remove':
-      if (!payload.id && !payload.agentId && !payload.clipId && !payload.id && !payload.questionId && !payload.artifactId && !payload.transcriptId) {
+      if (!payload.id) {
         return { valid: false, message: `Invalid ${entityType} data for ${operation}: missing id` };
       }
       return { valid: true, message: '' };
     case 'reorder':
       if (!Array.isArray(payload.order) || payload.order.length === 0) {
         return { valid: false, message: `Invalid ${entityType} order format: expected non-empty array of IDs` };
+      }
+      return { valid: true, message: '' };
+    case 'vote':
+      if (!payload.questionId || !payload.answerId || !payload.vote || !['up', 'down'].includes(payload.vote)) {
+        return { valid: false, message: `Invalid ${entityType} data for vote: missing or invalid fields` };
       }
       return { valid: true, message: '' };
     case 'draft':
@@ -164,7 +169,7 @@ function updateUpdateState(state, payload, entityType) {
 
 function updateDeleteState(state, payload, entityType) {
   const config = entityConfigs[entityType];
-  const id = payload[config.idKey] || payload.id || payload.agentId || payload.clipId || payload.id || payload.questionId || payload.artifactId || payload.transcriptId;
+  const id = payload[config.idKey] || payload.id;
   const newState = state.filter(item => item[config.idKey] !== id);
   if (config.orderField) {
     newState.forEach((item, index) => {
@@ -185,6 +190,14 @@ function updateReorderState(state, payload, entityType) {
   return newState;
 }
 
+function updateVoteState(state, payload) {
+  const answer = state.find(a => a.id === payload.answerId);
+  if (answer) {
+    answer.votes = (answer.votes || 0) + (payload.vote === 'up' ? 1 : -1);
+    answer.timestamp = Date.now();
+  }
+}
+
 async function handleCrudOperation(channelName, userUuid, type, payload, socket) {
   let operation, entityType;
   for (const [et, config] of Object.entries(entityConfigs)) {
@@ -193,6 +206,7 @@ async function handleCrudOperation(channelName, userUuid, type, payload, socket)
     else if (config.events.remove === type) { operation = 'remove'; entityType = et; break; }
     else if (config.events.reorder === type) { operation = 'reorder'; entityType = et; break; }
     else if (config.events.draft === type) { operation = 'draft'; entityType = et; break; }
+    else if (config.events.vote === type) { operation = 'vote'; entityType = et; break; }
   }
 
   if (!operation || !entityType) {
@@ -239,6 +253,9 @@ async function handleCrudOperation(channelName, userUuid, type, payload, socket)
     case 'reorder':
       updateFunc = updateReorderState;
       break;
+    case 'vote':
+      updateFunc = updateVoteState;
+      break;
     case 'draft':
       updateFunc = null;
       shouldSave = false;
@@ -250,7 +267,7 @@ async function handleCrudOperation(channelName, userUuid, type, payload, socket)
 
   if (operation === 'draft') {
     const serverTimestamp = Date.now();
-    broadcastToChannel(channelName, 'draft-chat', { 
+    broadcastToChannel(channelName, type, { 
       id: payload.id, 
       userUuid, 
       text: payload.text, 
@@ -260,10 +277,37 @@ async function handleCrudOperation(channelName, userUuid, type, payload, socket)
   }
 
   const normalizedPayload = {
-    ...payload.agent || payload.clip || payload.document || payload.question || payload.artifact || payload.transcript || payload,
+    ...payload.agent || payload.clip || payload.document || payload.question || payload.artifact || payload.transcript || payload.answer || payload,
     userUuid,
     timestamp: Date.now(),
   };
+
+  if (entityType === 'answers' && operation === 'add') {
+    const questionState = channel.state['questions'];
+    const question = questionState.find(q => q.id === normalizedPayload.questionId);
+    if (!question) {
+      socket.emit('message', { type: 'error', message: 'Question not found', timestamp: Date.now() });
+      return;
+    }
+    if (!question.answers) question.answers = [];
+    question.answers.push(normalizedPayload.id);
+    await saveStateToServer(channelName, 'questions', questionState);
+  } else if (entityType === 'answers' && operation === 'remove') {
+    const questionState = channel.state['questions'];
+    const question = questionState.find(q => q.id === normalizedPayload.questionId);
+    if (question && question.answers) {
+      question.answers = question.answers.filter(answerId => answerId !== normalizedPayload.id);
+      await saveStateToServer(channelName, 'questions', questionState);
+    }
+  } else if (entityType === 'questions' && operation === 'remove') {
+    const answerState = channel.state['answers'];
+    const question = state.find(q => q.id === normalizedPayload.id);
+    if (question && question.answers) {
+      const answerIds = question.answers;
+      channel.state['answers'] = answerState.filter(a => !answerIds.includes(a.id));
+      await saveStateToServer(channelName, 'answers', channel.state['answers']);
+    }
+  }
 
   const newState = updateFunc ? updateFunc(state, normalizedPayload, entityType) : state;
   if (newState !== undefined) {
@@ -277,11 +321,18 @@ async function handleCrudOperation(channelName, userUuid, type, payload, socket)
   } else if (entityType === 'agents' && operation === 'remove') {
     broadcastData = { id: normalizedPayload[config.idKey] };
   } else if (entityType === 'documents' && operation === 'add') {
-    broadcastData = { document: normalizedPayload }; // Preserve nested document structure
+    broadcastData = { document: normalizedPayload };
   } else if (entityType === 'documents' && operation === 'update') {
-    broadcastData = { id: normalizedPayload.id, name: normalizedPayload.name }; // Rename keeps flat structure
+    broadcastData = { id: normalizedPayload.id, name: normalizedPayload.name };
   } else if (entityType === 'documents' && operation === 'remove') {
-    broadcastData = { id: normalizedPayload[config.idKey] }; // Remove keeps flat structure
+    broadcastData = { id: normalizedPayload[config.idKey] };
+  } else if (entityType === 'answers' && (operation === 'add' || operation === 'update')) {
+    broadcastData = { id: normalizedPayload.id, questionId: normalizedPayload.questionId, text: normalizedPayload.text || '' };
+  } else if (entityType === 'answers' && operation === 'remove') {
+    broadcastData = { id: normalizedPayload.id, questionId: normalizedPayload.questionId };
+  } else if (entityType === 'answers' && operation === 'vote') {
+    const answer = state.find(a => a.id === payload.answerId);
+    broadcastData = { questionId: payload.questionId, answerId: payload.answerId, vote: payload.vote, votes: answer.votes };
   } else {
     broadcastData = {
       ...normalizedPayload,
@@ -460,13 +511,25 @@ async function handleMessage(data, socket) {
       await handleCrudOperation(channelName, userUuid, 'add-question', { ...payload.question, userUuid }, socket);
       break;
     case 'update-question':
-      await handleCrudOperation(channelName, userUuid, 'update-question', { ...payload.question, userUuid }, socket);
-      break;
+      await handleCrudOperation(channelName, userUuid, 'update-question', { id: payload.id, text: payload.text, userUuid }, socket);
+      break;    
     case 'remove-question':
-      await handleCrudOperation(channelName, userUuid, 'remove-question', { id: payload.questionId, userUuid }, socket);
+      await handleCrudOperation(channelName, userUuid, 'remove-question', { id: payload.id, userUuid }, socket);
       break;
     case 'reorder-questions':
-      await handleCrudOperation(channelName, userUuid, 'reorder-questions', { order: payload.questions, userUuid }, socket);
+      await handleCrudOperation(channelName, userUuid, 'reorder-questions', { order: payload.order, userUuid }, socket);
+      break;
+    case 'add-answer':
+      await handleCrudOperation(channelName, userUuid, 'add-answer', { id: payload.id, questionId: payload.questionId, text: '', userUuid }, socket);
+      break;
+    case 'update-answer':
+      await handleCrudOperation(channelName, userUuid, 'update-answer', { id: payload.id, questionId: payload.questionId, text: payload.text, userUuid }, socket);
+      break;
+    case 'delete-answer':
+      await handleCrudOperation(channelName, userUuid, 'delete-answer', { id: payload.id, questionId: payload.questionId, userUuid }, socket);
+      break;
+    case 'vote-answer':
+        await handleCrudOperation(channelName, userUuid, 'vote-answer', { questionId: payload.questionId, answerId: payload.id, vote: payload.vote, userUuid }, socket);
       break;
     case 'add-artifact':
       await handleCrudOperation(channelName, userUuid, 'add-artifact', { ...payload.artifact, userUuid }, socket);

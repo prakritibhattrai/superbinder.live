@@ -10,10 +10,8 @@ const activeUsers = Vue.ref(socketManager.activeUsers);
 const connectionError = Vue.ref(null);
 const lastMessageTimestamp = Vue.ref(0);
 
-// Load and persist user color from sessionStorage, specific to the channel
 const userColor = Vue.ref(sessionStorage.getItem(`userColor_${channelName.value}_${userUuid.value}`) || '');
 
-// Tolerance for timestamp differences (in milliseconds, e.g., 5 seconds)
 const TIMESTAMP_TOLERANCE = 5000;
 
 const sessionInfo = Vue.computed(() => ({
@@ -33,7 +31,7 @@ export function useRealTime() {
 
     const processedData = {
       ...data,
-      timestamp: data.serverTimestamp || data.timestamp || Date.now(), // Prefer server timestamp
+      timestamp: data.serverTimestamp || data.timestamp || Date.now(),
     };
 
     if (['user-list', 'user-joined'].includes(processedData.type)) {
@@ -59,7 +57,7 @@ export function useRealTime() {
             ...activeUsers.value,
             [userUuid.value]: {
               displayName: displayName.value,
-              color: userColor.value || '#808080', // Use stored color or default to grey
+              color: userColor.value || '#808080',
               joinedAt: Date.now(),
             },
           };
@@ -71,13 +69,12 @@ export function useRealTime() {
           ...activeUsers.value,
           [processedData.userUuid]: {
             displayName: processedData.displayName,
-            color: processedData.color || (processedData.userUuid === userUuid.value ? userColor.value : '#808080'), // Use stored color for self
+            color: processedData.color || (processedData.userUuid === userUuid.value ? userColor.value : '#808080'),
             joinedAt: processedData.timestamp || Date.now(),
           },
         };
         eventBus.$emit('user-joined', processedData);
         break;
-    
       case 'add-chat':
         eventBus.$emit('add-chat', processedData);
         break;
@@ -141,6 +138,18 @@ export function useRealTime() {
       case 'reorder-questions':
         eventBus.$emit('reorder-questions', processedData);
         break;
+      case 'add-answer':
+        eventBus.$emit('add-answer', processedData);
+        break;
+      case 'update-answer':
+        eventBus.$emit('update-answer', processedData);
+        break;
+      case 'delete-answer':
+        eventBus.$emit('delete-answer', processedData);
+        break;
+      case 'vote-answer':
+          eventBus.$emit('vote-answer', processedData);
+        break;
       case 'add-artifact':
         eventBus.$emit('add-artifact', processedData);
         break;
@@ -174,8 +183,7 @@ export function useRealTime() {
   }
 
   function generateMutedDarkColor() {
-    // Muted dark mode colors: low RGB values (0-128) for dark, muted tones
-    const r = Math.floor(Math.random() * 129); // 0-128
+    const r = Math.floor(Math.random() * 129);
     const g = Math.floor(Math.random() * 129);
     const b = Math.floor(Math.random() * 129);
     return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
@@ -189,7 +197,6 @@ export function useRealTime() {
     sessionStorage.setItem('displayName', name);
     sessionStorage.setItem('channelName', channel);
 
-    // Handle user color registration and persistence
     const storedColor = sessionStorage.getItem(`userColor_${channel}_${userUuid.value}`);
     if (!storedColor) {
       userColor.value = generateMutedDarkColor();
@@ -280,6 +287,10 @@ export function useRealTime() {
     off('update-question');
     off('remove-question');
     off('reorder-questions');
+    off('add-answer');
+    off('update-answer');
+    off('delete-answer');
+    off('vote-answer');
     off('add-artifact');
     off('remove-artifact');
     off('add-transcript');

@@ -1,274 +1,194 @@
-// composables/useQuestions.js
 import { useRealTime } from './useRealTime.js';
 
 const questions = Vue.ref([]);
-const drafts = Vue.ref({}); // Track typing indicators for questions and answers
+const answers = Vue.ref([]);
+
 const { emit, on, off } = useRealTime();
 
-// Store event handlers for cleanup
-const eventHandlers = new WeakMap();
-
 export function useQuestions() {
-  function handleAddQuestion(question) {
-    if (!questions.value.some(q => q.id === question.id)) {
-      questions.value.push(question);
-    }
-  }
+  // Event handlers
+  const handleSyncHistoryData = (state) => {
+    questions.value = state.questions || [];
+    answers.value = state.answers || [];
+  };
 
-  function handleUpdateQuestion({ id, text }) {
+const handleAddQuestion = (data) => {
+  // console.log("Handle question add", data)
+  const question = { id: data.id, text: data.text, order: data.order, answers: data.answers || [] };
+  if (!questions.value.some(q => q.id === question.id)) {
+    questions.value.push(question);
+  }
+};
+
+  const handleUpdateQuestion = ({ id, text }) => {
     const question = questions.value.find(q => q.id === id);
-    if (question) {
-      question.text = text;
-    }
-  }
+    if (question) question.text = text;
+  };
 
-  function handleRemoveQuestion({ id }) {
+  const handleDeleteQuestion = ({ id }) => {
     questions.value = questions.value.filter(q => q.id !== id);
-  }
+  };
 
-  function handleReorderQuestions(newOrder) {
-    questions.value = newOrder.map((id, index) => {
+  const handleReorderQuestions = ({ order }) => {
+    questions.value = order.map((id, index) => {
       const question = questions.value.find(q => q.id === id);
       return { ...question, order: index };
     }).sort((a, b) => a.order - b.order);
-  }
+  };
 
-  function handleAddAnswer({ questionId, answer }) {
-    const question = questions.value.find(q => q.id === questionId);
-    if (question) {
-      if (!question.answers) question.answers = [];
-      if (!question.answers.some(a => a.id === answer.id)) {
-        question.answers.push(answer);
-      }
+  const handleAddAnswer = ({ id, questionId, text }) => {
+    if (!answers.value.some(a => a.id === id)) {
+      answers.value.push({ id, questionId, text, votes: 0 });
     }
-  }
-
-  function handleUpdateAnswer({ questionId, answerId, text }) {
     const question = questions.value.find(q => q.id === questionId);
-    if (question) {
-      const answer = question.answers.find(a => a.id === answerId);
+    if (question && !question.answers.includes(id)) {
+      question.answers.push(id);
+    }
+  };
+
+  const handleUpdateAnswer = ({ id, questionId, text }) => {
+    const answer = answers.value.find(a => a.id === id);
+    if (answer) answer.text = text;
+  };
+
+  const handleDeleteAnswer = ({ id, questionId }) => {
+    answers.value = answers.value.filter(a => a.id !== id);
+    const question = questions.value.find(q => q.id === questionId);
+    if (question) question.answers = question.answers.filter(aId => aId !== id);
+  };
+
+  const handleVoteAnswer = ({ questionId, answerId, vote, votes }) => {
+    // console.log('Vote received:', { questionId, answerId, vote, votes });
+    const answer = answers.value.find(a => a.id === answerId);
+    if (votes !== undefined) {
+      // Server broadcast
       if (answer) {
-        answer.text = text;
+        // console.log('Updating votes for', answerId, 'to', votes);
+        answer.votes = votes;
+      } else {
+        console.warn(`Vote received for unknown answer ${answerId} in question ${questionId}`);
       }
-    }
-  }
-
-  function handleRemoveAnswer({ questionId, answerId }) {
-    const question = questions.value.find(q => q.id === questionId);
-    if (question) {
-      question.answers = question.answers.filter(a => a.id !== answerId);
-    }
-  }
-
-  function handleReorderAnswers({ questionId, newOrder }) {
-    const question = questions.value.find(q => q.id === questionId);
-    if (question) {
-      question.answers = newOrder.map((id, index) => {
-        const answer = question.answers.find(a => a.id === id);
-        return { ...answer, order: index };
-      }).sort((a, b) => a.order - b.order);
-    }
-  }
-
-  function handleVoteAnswer({ questionId, answerId, vote }) {
-    const question = questions.value.find(q => q.id === questionId);
-    if (question) {
-      const answer = question.answers.find(a => a.id === answerId);
+    } else {
+      // Local vote
       if (answer) {
+        // console.log('Local vote for', answerId, 'with', vote);
         answer.votes = (answer.votes || 0) + (vote === 'up' ? 1 : -1);
-        // Reorder answers by votes (highest to lowest)
-        question.answers.sort((a, b) => (b.votes || 0) - (a.votes || 0));
-        emit('vote-answer', { questionId, answerId, vote });
+        emit('vote-answer', { questionId, id: answerId, vote });
+      } else {
+        console.warn(`Local vote failed: Answer ${answerId} not found`);
       }
     }
-  }
+  };
 
-  function handleQuestionDraft({ id, text }) {
-    drafts.value[id] = text;
-  }
+  // Register listeners
+  on('sync-history-data', handleSyncHistoryData);
+  on('add-question', handleAddQuestion);
+  on('update-question', handleUpdateQuestion);
+  on('remove-question', handleDeleteQuestion);
+  on('reorder-questions', handleReorderQuestions);
+  on('add-answer', handleAddAnswer);
+  on('update-answer', handleUpdateAnswer);
+  on('delete-answer', handleDeleteAnswer);
+  on('vote-answer', handleVoteAnswer);
 
-  function handleAnswerDraft({ questionId, answerId, text }) {
-    if (!drafts.value[questionId]) drafts.value[questionId] = {};
-    drafts.value[questionId][answerId] = text;
-  }
-
-  // Register event listeners and store handlers for cleanup
-  const addQuestionHandler = on('add-question', handleAddQuestion);
-  const updateQuestionHandler = on('update-question', handleUpdateQuestion);
-  const removeQuestionHandler = on('remove-question', handleRemoveQuestion);
-  const reorderQuestionsHandler = on('reorder-questions', handleReorderQuestions);
-  const addAnswerHandler = on('add-answer', handleAddAnswer);
-  const updateAnswerHandler = on('update-answer', handleUpdateAnswer);
-  const removeAnswerHandler = on('remove-answer', handleRemoveAnswer);
-  const reorderAnswersHandler = on('reorder-answers', handleReorderAnswers);
-  const voteAnswerHandler = on('vote-answer', handleVoteAnswer);
-  const questionDraftHandler = on('question-draft', handleQuestionDraft);
-  const answerDraftHandler = on('answer-draft', handleAnswerDraft);
-
-  // Store handlers in a WeakMap for cleanup
-  eventHandlers.set(useQuestions, {
-    addQuestion: addQuestionHandler,
-    updateQuestion: updateQuestionHandler,
-    removeQuestion: removeQuestionHandler,
-    reorderQuestions: reorderQuestionsHandler,
-    addAnswer: addAnswerHandler,
-    updateAnswer: updateAnswerHandler,
-    removeAnswer: removeAnswerHandler,
-    reorderAnswers: reorderAnswersHandler,
-    voteAnswer: voteAnswerHandler,
-    questionDraft: questionDraftHandler,
-    answerDraft: answerDraftHandler,
+  // Computed property to merge questions with their answers, sorted by votes
+  const questionsWithAnswers = Vue.computed(() => {
+    const result = questions.value.map(question => ({
+      ...question,
+      answers: (question.answers || []).map(answerId => answers.value.find(a => a.id === answerId)).filter(Boolean).sort((a, b) => (b.votes || 0) - (a.votes || 0)),
+    })).sort((a, b) => a.order - b.order);
+    // console.log('Computed questionsWithAnswers:', result);
+    return result;
   });
 
-  function addQuestion(text) {
+  // Actions
+  const addQuestion = (text) => {
     const id = uuidv4();
     const question = { id, text, order: questions.value.length, answers: [] };
     questions.value.push(question);
     emit('add-question', { question });
-  }
+  };
 
-  function updateQuestion(id, text) {
+  const updateQuestion = (id, text) => {
     const question = questions.value.find(q => q.id === id);
     if (question) {
       question.text = text;
       emit('update-question', { id, text });
     }
-  }
+  };
 
-  function removeQuestion(id) {
+  const deleteQuestion = (id) => {
     questions.value = questions.value.filter(q => q.id !== id);
     emit('remove-question', { id });
-  }
+  };
 
-  function reorderQuestions(draggedId, newIndex) {
+  const reorderQuestions = (draggedId, newIndex) => {
     const currentIndex = questions.value.findIndex(q => q.id === draggedId);
     const newOrder = [...questions.value];
-    const [movedQuestion] = newOrder.splice(currentIndex, 1);
-    newOrder.splice(newIndex, 0, movedQuestion);
-    newOrder.forEach((q, index) => q.order = index);
+    const [moved] = newOrder.splice(currentIndex, 1);
+    newOrder.splice(newIndex, 0, moved);
+    newOrder.forEach((q, i) => q.order = i);
     questions.value = newOrder;
     emit('reorder-questions', { order: newOrder.map(q => q.id) });
-  }
+  };
 
-  function addAnswer(questionId, text) {
+  const addAnswer = (questionId) => {
     const id = uuidv4();
-    const answer = { id, text, votes: 0, order: 0 };
+    answers.value.push({ id, questionId, text: '', votes: 0 });
     const question = questions.value.find(q => q.id === questionId);
     if (question) {
-      if (!question.answers) question.answers = [];
-      question.answers.push(answer);
-      emit('add-answer', { questionId, answer });
+      question.answers.push(id);
+      emit('add-answer', { id, questionId, text: '' });
     }
-  }
+    return id;
+  };
 
-  function updateAnswer(questionId, answerId, text) {
+  const updateAnswer = (id, questionId, text) => {
+    const answer = answers.value.find(a => a.id === id);
+    if (answer) {
+      answer.text = text;
+      emit('update-answer', { id, questionId, text });
+    }
+  };
+
+  const deleteAnswer = (id, questionId) => {
+    answers.value = answers.value.filter(a => a.id !== id);
     const question = questions.value.find(q => q.id === questionId);
     if (question) {
-      const answer = question.answers.find(a => a.id === answerId);
-      if (answer) {
-        answer.text = text;
-        emit('update-answer', { questionId, answerId, text });
-      }
+      question.answers = question.answers.filter(aId => aId !== id);
+      emit('delete-answer', { id, questionId });
     }
-  }
+  };
 
-  function removeAnswer(questionId, answerId) {
-    const question = questions.value.find(q => q.id === questionId);
-    if (question) {
-      question.answers = question.answers.filter(a => a.id !== answerId);
-      emit('remove-answer', { questionId, answerId });
-    }
-  }
+  const voteAnswer = (questionId, id, vote) => {
+    handleVoteAnswer({ questionId, answerId: id, vote });
+  };
 
-  function reorderAnswers(questionId, draggedId, newIndex) {
-    const question = questions.value.find(q => q.id === questionId);
-    if (question) {
-      const currentIndex = question.answers.findIndex(a => a.id === draggedId);
-      const newOrder = [...question.answers];
-      const [movedAnswer] = newOrder.splice(currentIndex, 1);
-      newOrder.splice(newIndex, 0, movedAnswer);
-      newOrder.forEach((a, index) => a.order = index);
-      question.answers = newOrder;
-      emit('reorder-answers', { questionId, order: newOrder.map(a => a.id) });
-    }
-  }
-
-  function voteAnswer(questionId, answerId, vote) {
-    handleVoteAnswer({ questionId, answerId, vote });
-  }
-
-  function startQuestionDraft(id, text) {
-    drafts.value[id] = text;
-    emit('question-draft', { id, text });
-  }
-
-  function stopQuestionDraft(id) {
-    delete drafts.value[id];
-    emit('question-draft', { id, text: '' });
-  }
-
-  function startAnswerDraft(questionId, answerId, text) {
-    if (!drafts.value[questionId]) drafts.value[questionId] = {};
-    drafts.value[questionId][answerId] = text;
-    emit('answer-draft', { questionId, answerId, text });
-  }
-
-  function stopAnswerDraft(questionId, answerId) {
-    if (drafts.value[questionId]) {
-      delete drafts.value[questionId][answerId];
-      if (Object.keys(drafts.value[questionId]).length === 0) {
-        delete drafts.value[questionId];
-      }
-    }
-    emit('answer-draft', { questionId, answerId, text: '' });
-  }
-
-  // Programmatic addition/modification for AI or transcriptions/clips
-  function addQuestionProgrammatically(text) {
-    addQuestion(text);
-  }
-
-  function addAnswerProgrammatically(questionId, text) {
-    addAnswer(questionId, text);
-  }
-
-  // Cleanup function for components to call
-  function cleanup() {
-    const handlers = eventHandlers.get(useQuestions);
-    if (handlers) {
-      off('add-question', handlers.addQuestion);
-      off('update-question', handlers.updateQuestion);
-      off('remove-question', handlers.removeQuestion);
-      off('reorder-questions', handlers.reorderQuestions);
-      off('add-answer', handlers.addAnswer);
-      off('update-answer', handlers.updateAnswer);
-      off('remove-answer', handlers.removeAnswer);
-      off('reorder-answers', handlers.reorderAnswers);
-      off('vote-answer', handlers.voteAnswer);
-      off('question-draft', handlers.questionDraft);
-      off('answer-draft', handlers.answerDraft);
-      eventHandlers.delete(useQuestions);
-    }
-  }
+  const cleanup = () => {
+    off('sync-history-data', handleSyncHistoryData);
+    off('add-question', handleAddQuestion);
+    off('update-question', handleUpdateQuestion);
+    off('remove-question', handleDeleteQuestion);
+    off('reorder-questions', handleReorderQuestions);
+    off('add-answer', handleAddAnswer);
+    off('update-answer', handleUpdateAnswer);
+    off('delete-answer', handleDeleteAnswer);
+    off('vote-answer', handleVoteAnswer);
+  };
 
   return {
     questions,
-    drafts,
+    questionsWithAnswers,
+    rawQuestions: questions,
+    rawAnswers: answers,
     addQuestion,
     updateQuestion,
-    removeQuestion,
+    deleteQuestion,
     reorderQuestions,
     addAnswer,
     updateAnswer,
-    removeAnswer,
-    reorderAnswers,
+    deleteAnswer,
     voteAnswer,
-    startQuestionDraft,
-    stopQuestionDraft,
-    startAnswerDraft,
-    stopAnswerDraft,
-    addQuestionProgrammatically,
-    addAnswerProgrammatically,
     cleanup,
   };
 }
