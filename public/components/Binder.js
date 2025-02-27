@@ -36,9 +36,9 @@ export default {
               <i v-if="!isRoomLocked" class="pi pi-unlock text-xl"></i>
               <i v-if="isRoomLocked" class="pi pi-lock text-xl"></i>
             </button>
-            <button @click="downloadFromCloud" class="p-2 text-white hover:text-purple-400" title="Download from Cloud">
+           <!-- <button @click="downloadFromCloud" class="p-2 text-white hover:text-purple-400" title="Download from Cloud">
               <i class="pi pi-cloud-download text-xl"></i>
-            </button>
+            </button> -->
             <span :class="connectionStatusClass" class="inline-block w-4 h-4 rounded-full mr-2" title="Connection Status"></span>
           </div>
         </div>
