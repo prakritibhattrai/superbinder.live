@@ -40,7 +40,7 @@ export default {
           @click="selectDocument(doc)"
         >
           <div class="flex items-center space-x-2">
-            <i :class="getFileIcon(doc.type)"></i>
+            <i :class="getFileIcon(doc.name)"></i>
             <input
               v-model="doc.name"
               @change="renameDocument(doc.id, $event.target.value)"
@@ -57,7 +57,7 @@ export default {
     </div>
   `,
   setup() {
-    const { documents, addDocument, removeDocument, setSelectedDocument } = useDocuments();
+    const { documents, addDocument, removeDocument, setSelectedDocument, updateDocument } = useDocuments();
     const { emit } = useRealTime();
     const dropZone = Vue.ref(null);
     const fileInput = Vue.ref(null);
@@ -84,7 +84,7 @@ export default {
     async function handleFileUpload(event) {
       const files = event.target.files;
       await handleFiles(files);
-      fileInput.value.value = ''; // Reset input to allow re-uploading the same file
+      fileInput.value.value = ''; // Reset input
     }
 
     // Trigger file input click
@@ -95,7 +95,7 @@ export default {
     // Delegate file handling to useDocuments
     async function handleFiles(files) {
       for (const file of Array.from(files)) {
-        await addDocument(file); // Use addDocument from useDocuments to handle processing and syncing
+        await addDocument(file);
       }
     }
 
@@ -106,22 +106,21 @@ export default {
 
     // Rename document and sync with others
     function renameDocument(docId, newName) {
-      const doc = documents.value.find(d => d.id === docId);
-      if (doc && newName.trim()) {
-        doc.name = newName.trim();
-        emit('rename-document', { documentId: docId, newName: doc.name }); // Sync rename
+      if (newName.trim()) {
+        updateDocument(docId, newName.trim()); // Use updateDocument from useDocuments
       }
     }
 
     // Remove document locally and sync
     function removeDocumentLocal(docId) {
-      removeDocument(docId); // Remove from local state
-      emit('remove-document', { documentId: docId }); // Sync removal
+      removeDocument(docId); // Use removeDocument from useDocuments
     }
 
-    // Get file icon based on type
-    function getFileIcon(fileType) {
-      const extension = fileType.split('.').pop().toLowerCase();
+    // Get file icon based on name (fallback if type is missing)
+    function getFileIcon(fileName) {
+      const extension = fileName.includes('.') 
+        ? fileName.split('.').pop().toLowerCase() 
+        : 'default'; // Fallback to 'default' if no extension
       const iconMap = {
         js: 'pi pi-code',
         jsx: 'pi pi-code',
@@ -149,6 +148,7 @@ export default {
         env: 'pi pi-cog',
         gitignore: 'pi pi-github',
         lock: 'pi pi-lock',
+        xlsx: 'pi pi-file-excel',
         default: 'pi pi-file',
       };
       return iconMap[extension] || iconMap.default;

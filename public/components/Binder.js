@@ -150,6 +150,10 @@ export default {
 
     const participantCount = Vue.computed(() => Object.keys(activeUsers.value || {}).length);
 
+    // Timeout ID for delayed disconnection
+    let disconnectTimeout = null;
+    const DISCONNECT_DELAY = 2 * 1000; // 2 seconds milliseconds
+
     function handleSetupComplete({ channel, name }) {
       if (!isValidChannelName(channel)) {
         console.error('Invalid channel name. Use alphanumeric characters and underscores only.');
@@ -160,6 +164,7 @@ export default {
     }
 
     function resetSession() {
+      clearTimeout(disconnectTimeout);
       disconnect();
       sessionStorage.removeItem('userUuid');
       sessionStorage.removeItem('displayName');
@@ -209,39 +214,30 @@ export default {
       input.click();
     }
 
-    // function saveLocally(data) {
-    //   if (data && Object.keys(data).length > 0) {
-    //     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    //     const url = window.URL.createObjectURL(blob);
-    //     const link = document.createElement('a');
-    //     link.href = url;
-    //     link.download = `channel_${channelName.value}_data.json`;
-    //     document.body.appendChild(link);
-    //     link.click();
-    //     document.body.removeChild(link);
-    //     window.URL.revokeObjectURL(url);
-    //   } else {
-    //     console.warn('Empty or undefined data, skipping save:', data);
-    //   }
-    // }
-
-    function handleBlur() {
-      if (isConnected.value && channelName.value) {
-        const updatedUsers = { ...activeUsers.value };
-        delete updatedUsers[userUuid.value];
-        activeUsers.value = updatedUsers;
-        emit('leave-channel', { userUuid: userUuid.value, channelName: channelName.value });
-        disconnect();
-      }
-    }
-
-    function handleFocus() {
-      if (channelName.value && displayName.value) {
-        if (!isValidChannelName(channelName.value)) {
-          console.error('Invalid channel name. Use alphanumeric characters and underscores only.');
-          return;
+    function handleVisibilityChange() {
+      if (document.hidden) {
+        // Tab is hidden, start the disconnect timer
+        if (isConnected.value && channelName.value) {
+          disconnectTimeout = setTimeout(() => {
+            const updatedUsers = { ...activeUsers.value };
+            delete updatedUsers[userUuid.value];
+            activeUsers.value = updatedUsers;
+            emit('leave-channel', { userUuid: userUuid.value, channelName: channelName.value });
+            disconnect();
+            console.log('Disconnected due to prolonged tab inactivity');
+          }, DISCONNECT_DELAY);
         }
-        connect(channelName.value, displayName.value);
+      } else {
+        // Tab is visible, cancel any pending disconnect and reconnect if needed
+        clearTimeout(disconnectTimeout);
+        if (!isConnected.value && channelName.value && displayName.value) {
+          if (!isValidChannelName(channelName.value)) {
+            console.error('Invalid channel name. Use alphanumeric characters and underscores only.');
+            return;
+          }
+          connect(channelName.value, displayName.value);
+          console.log('Reconnected due to tab visibility');
+        }
       }
     }
 
@@ -279,9 +275,6 @@ export default {
     on('upload-to-cloud-success', (data) => {
       console.log('Upload to cloud successful:', data.message);
       const history = gatherLocalHistory();
-      // if (history && Object.keys(history).length > 0) {
-      //   saveLocally(history);
-      // }
     });
 
     on('error', (errorData) => {
@@ -298,8 +291,8 @@ export default {
     });
 
     Vue.onMounted(() => {
-      window.addEventListener('blur', handleBlur);
-      window.addEventListener('focus', handleFocus);
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      window.addEventListener('resize', updateIsMobile);
       if (sessionInfo.value.userUuid && sessionInfo.value.channelName && sessionInfo.value.displayName) {
         if (!isValidChannelName(sessionInfo.value.channelName)) {
           console.error('Invalid channel name in session info. Use alphanumeric characters and underscores only.');
@@ -312,8 +305,9 @@ export default {
     });
 
     Vue.onUnmounted(() => {
-      window.removeEventListener('blur', handleBlur);
-      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('resize', updateIsMobile);
+      clearTimeout(disconnectTimeout);
       off('user-list');
       off('upload-to-cloud-success');
       off('error');
@@ -326,7 +320,6 @@ export default {
       cleanupQuestions();
       cleanupArtifacts();
       cleanupTranscripts();
-      window.removeEventListener('resize', updateIsMobile);
     });
 
     Vue.watch(isConnected, (connected) => {
