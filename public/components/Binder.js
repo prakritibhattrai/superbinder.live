@@ -5,6 +5,7 @@ import SessionSetup from './SessionSetup.js';
 import ViewerUploads from './ViewerUploads.js';
 import Viewer from './Viewer.js';
 import ChatPanel from './ChatPanel.js';
+import ViewerDashboard from './ViewerDashboard.js';
 import { useAgents } from '../composables/useAgents.js';
 import { useChat } from '../composables/useChat.js';
 import { useClips } from '../composables/useClips.js';
@@ -16,7 +17,7 @@ import { useTranscripts } from '../composables/useTranscripts.js';
 
 export default {
   name: 'Binder',
-  components: { SessionSetup, ViewerUploads, Viewer, ChatPanel },
+  components: { SessionSetup, ViewerUploads, Viewer, ChatPanel, ViewerDashboard },
   template: `
     <div class="flex flex-col min-h-screen bg-gray-950 text-white p-2 overflow-x-hidden" style="height: 100vh;">
       <session-setup v-if="!sessionReady" @setup-complete="handleSetupComplete" />
@@ -123,9 +124,9 @@ export default {
     const { sessionInfo, connect, loadSession, disconnect, isConnected, connectionStatus, activeUsers, emit, on, off, connectionError } = useRealTime();
     const { gatherLocalHistory, syncChannelData } = useHistory();
     const sessionReady = Vue.ref(false);
-    const activeTab = Vue.ref('Goals');
+    const activeTab = Vue.ref('Dashboard');
     const activeDocumentSubTab = Vue.ref('Uploads');
-    const tabs = ['Goals', 'Agents', 'Documents', 'Transcriptions', 'Q&A', 'Artifacts'];
+    const tabs = ['Dashboard', 'Goals', 'Agents', 'Documents', 'Transcriptions', 'Q&A', 'Artifacts'];
     const documentSubTabs = ['Uploads', 'Viewer', 'Clips'];
     const isRoomLocked = Vue.ref(false);
     const isChatOpen = Vue.ref(false);
@@ -229,12 +230,22 @@ export default {
     }
 
     function updateActiveTab(tab, subTab = null) {
+
+
+      if(tab == 'Chat')
+      {
+        toggleChat()
+        return;
+      }
       activeTab.value = tab;
       if (tab === 'Documents' && subTab) {
         activeDocumentSubTab.value = subTab;
       } else if (tab !== 'Documents') {
+
         activeDocumentSubTab.value = 'Uploads';
       }
+
+
       emit('update-tab', { tab: tab, subTab: tab === 'Documents' ? activeDocumentSubTab.value : null });
     }
 
@@ -286,6 +297,10 @@ export default {
       }
     });
 
+    on('toggle-chat', () => {
+      toggleChat();
+    });
+
     Vue.onMounted(() => {
       document.addEventListener('visibilitychange', handleVisibilityChange);
       window.addEventListener('resize', updateIsMobile);
@@ -308,6 +323,7 @@ export default {
       off('user-list');
       off('error');
       off('room-lock-toggle');
+      off('toggle-chat');
       cleanupAgents();
       cleanupChat();
       cleanupClips();

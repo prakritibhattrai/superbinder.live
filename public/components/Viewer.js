@@ -7,6 +7,7 @@ import ViewerTranscribe from './ViewerTranscribe.js';
 import ViewerQuestions from './ViewerQuestions.js';
 import ViewerArtifacts from './ViewerArtifacts.js';
 import ViewerUploads from './ViewerUploads.js';
+import ViewerDashboard from './ViewerDashboard.js';
 import { useRealTime } from '../composables/useRealTime.js';
 
 export default {
@@ -20,6 +21,7 @@ export default {
     ViewerQuestions,
     ViewerArtifacts,
     ViewerUploads,
+    ViewerDashboard,
   },
   props: {
     activeTab: {
@@ -48,6 +50,7 @@ export default {
   },
   template: `
     <div class="h-full overflow-y-auto p-4">
+      <viewer-dashboard v-show="activeTab === 'Dashboard'" :update-tab="updateTab" /> <!-- Pass updateTab as prop -->
       <viewer-goals v-show="activeTab === 'Goals'" />
       <viewer-agents v-show="activeTab === 'Agents'" />
       <viewer-documents v-show="activeTab === 'Documents' && activeDocumentSubTab === 'Viewer'" />
