@@ -8,7 +8,6 @@ import ViewerQuestions from './ViewerQuestions.js';
 import ViewerArtifacts from './ViewerArtifacts.js';
 import ViewerUploads from './ViewerUploads.js';
 import ViewerDashboard from './ViewerDashboard.js';
-import GraphSummarizer from './GraphSummarizer.js';
 import { useRealTime } from '../composables/useRealTime.js';
 
 export default {
@@ -23,7 +22,6 @@ export default {
     ViewerArtifacts,
     ViewerUploads,
     ViewerDashboard,
-    GraphSummarizer,
   },
   props: {
     activeTab: {
@@ -60,7 +58,6 @@ export default {
       <viewer-transcribe v-show="activeTab === 'Transcriptions'" />
       <viewer-questions v-show="activeTab === 'Q&A'" />
       <viewer-artifacts v-show="activeTab === 'Artifacts'" />
-      <graph-summarizer v-show="activeTab === 'Graph'" />
       <viewer-uploads 
         v-show="activeTab === 'Documents' && activeDocumentSubTab === 'Uploads'" 
         :update-tab="updateTab"

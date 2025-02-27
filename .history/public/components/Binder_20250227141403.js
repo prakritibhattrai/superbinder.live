@@ -126,7 +126,7 @@ export default {
     const sessionReady = Vue.ref(false);
     const activeTab = Vue.ref('Dashboard');
     const activeDocumentSubTab = Vue.ref('Uploads');
-    const tabs = ['Dashboard', 'Goals', 'Agents', 'Documents', 'Transcriptions', 'Q&A', 'Artifacts', 'Graph'];
+    const tabs = ['Dashboard', 'Goals', 'Agents', 'Documents', 'Transcriptions', 'Q&A', 'Artifacts'];
     const documentSubTabs = ['Uploads', 'Viewer', 'Clips'];
     const isRoomLocked = Vue.ref(false);
     const isChatOpen = Vue.ref(false);

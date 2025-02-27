@@ -132,18 +132,6 @@ export default {
             <p class="text-gray-400">Total artifacts stored.</p>
           </div>
 
-          <!-- Relationship Graphs -->
-          <div 
-            class="bg-gray-800 p-6 rounded-lg shadow-lg hover:shadow-xl hover:bg-gray-700 transition-all cursor-pointer"
-            @click="navigateToTab('Graph')"
-          >
-            <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
-              <i class="pi pi-sitemap text-green-400"></i>
-              Relationship Graph
-            </h2>
-            <p class="text-gray-400">Extract relationships from documents.</p>
-          </div>
-
           <!-- Transcripts -->
           <div 
             class="bg-gray-800 p-6 rounded-lg shadow-lg hover:shadow-xl hover:bg-gray-700 transition-all cursor-pointer"

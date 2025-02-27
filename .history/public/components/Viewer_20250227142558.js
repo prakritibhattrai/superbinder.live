@@ -59,8 +59,10 @@ export default {
       <viewer-clips v-show="activeTab === 'Documents' && activeDocumentSubTab === 'Clips'" />
       <viewer-transcribe v-show="activeTab === 'Transcriptions'" />
       <viewer-questions v-show="activeTab === 'Q&A'" />
-      <viewer-artifacts v-show="activeTab === 'Artifacts'" />
-      <graph-summarizer v-show="activeTab === 'Graph'" />
+      <div v-show="activeTab === 'Artifacts'" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <viewer-artifacts />
+        <graph-summarizer />
+      </div>
       <viewer-uploads 
         v-show="activeTab === 'Documents' && activeDocumentSubTab === 'Uploads'" 
         :update-tab="updateTab"
