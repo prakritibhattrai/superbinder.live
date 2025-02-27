@@ -24,27 +24,8 @@ export default {
       </div>
       <div ref="graphContainer" class="flex-1 bg-gray-800 rounded-lg border border-gray-600 overflow-hidden"></div>
       <div class="mt-2 text-gray-400 text-sm">
-        <div v-if="nodes.length === 0">
-          <p>No relationships extracted yet. Follow these steps:</p>
-          <ol class="list-decimal pl-5 mt-2 space-y-1 text-sm">
-            <li>Go to <span class="text-blue-400 cursor-pointer" @click="navigateToDocuments">Documents → Uploads</span></li>
-            <li>Click <span class="text-purple-400">"Load Sample Docs"</span> to add sample documents</li>
-            <li>Return to this Graph tab</li>
-            <li>Click the <span class="text-green-400">"Extract"</span> button above to analyze relationships</li>
-          </ol>
-        </div>
-        <div v-else>
-          Found {{ nodes.length }} entities and {{ links.length }} relationships from documents.
-          <p class="mt-1 text-xs">
-            <i class="pi pi-info-circle"></i> Click on document nodes to view their contents. 
-            <span class="flex items-center mt-1">
-              <span class="w-3 h-0.5 bg-green-500 mx-1 inline-block" style="border-top: 1px dashed #4caf50;"></span> Green dashed lines: Basic document connections
-            </span>
-            <span class="flex items-center mt-1">
-              <span class="w-3 h-0.5 bg-purple-500 mx-1 inline-block"></span> Purple solid lines: Documents sharing common entities
-            </span>
-          </p>
-        </div>
+        <div v-if="nodes.length === 0">No relationships extracted yet. Click 'Extract' to analyze documents.</div>
+        <div v-else>Found {{ nodes.length }} entities and {{ links.length }} relationships from documents.</div>
       </div>
     </div>
   `,
@@ -131,16 +112,9 @@ export default {
         .attr("stroke", d => {
           // Use different colors for different types of links
           if (d.source.type === 'document' && d.target.type === 'document') {
-            if (d.type === 'connected') {
-              return "#4caf50"; // Green for basic document connections
-            }
-            return "#9c27b0"; // Purple for document-document links with shared entities
+            return "#9c27b0"; // Purple for document-document links
           }
           return "#999";
-        })
-        .attr("stroke-dasharray", d => {
-          // Use dashed lines for basic connections
-          return d.type === 'connected' ? "5,5" : "none";
         });
       
       // Create node tooltips
@@ -528,29 +502,7 @@ export default {
         });
       });
       
-      // Connect all documents to each other directly
-      const documentNodes = nodes.value.filter(node => node.type === 'document');
-      if (documentNodes.length > 1) {
-        for (let i = 0; i < documentNodes.length; i++) {
-          for (let j = i + 1; j < documentNodes.length; j++) {
-            const docA = documentNodes[i];
-            const docB = documentNodes[j];
-            
-            // Check if a link already exists between these documents
-            const existingLink = links.value.find(
-              l => (l.source === docA.id && l.target === docB.id) ||
-                  (l.source === docB.id && l.target === docA.id)
-            );
-            
-            if (!existingLink) {
-              // Create a direct connection between documents
-              addLink(docA.id, docB.id, 'connected', 2);
-            }
-          }
-        }
-      }
-      
-      // Additionally find relationships between documents based on common entities
+      // Find relationships between documents based on common entities
       if (documents.length > 1) {
         // Create a map of entities to documents that mention them
         const entityToDocuments = {};
@@ -594,10 +546,6 @@ export default {
                   if (existingLink) {
                     // Increment weight of existing link
                     existingLink.value += 1;
-                    // Update link type to show shared entity
-                    if (!existingLink.type.includes(entity.name)) {
-                      existingLink.type += ` & ${entity.type} "${entity.name}"`;
-                    }
                   } else {
                     // Create new link
                     addLink(docAId, docBId, `share ${entity.type} "${entity.name}"`, 1);

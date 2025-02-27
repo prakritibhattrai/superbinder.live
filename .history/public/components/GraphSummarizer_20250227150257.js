@@ -18,7 +18,8 @@ export default {
           <button class="px-2 py-1 bg-gray-700 hover:bg-gray-600" :class="{ 'bg-gray-600': currentLayout === 'radial' }" @click="setLayout('radial')">Radial</button>
           <button class="px-2 py-1 bg-gray-700 rounded-r hover:bg-gray-600" :class="{ 'bg-gray-600': currentLayout === 'tree' }" @click="setLayout('tree')">Tree</button>
         </div>
-        <div class="text-xs text-gray-400">
+        <div class="flex text-xs space-x-3">
+          <button class="text-purple-400 hover:underline" @click="navigateToUploadDocs">Upload Docs</button>
           <button class="text-blue-400 hover:underline" @click="navigateToDocuments">View Documents</button>
         </div>
       </div>
@@ -27,11 +28,14 @@ export default {
         <div v-if="nodes.length === 0">
           <p>No relationships extracted yet. Follow these steps:</p>
           <ol class="list-decimal pl-5 mt-2 space-y-1 text-sm">
-            <li>Go to <span class="text-blue-400 cursor-pointer" @click="navigateToDocuments">Documents → Uploads</span></li>
+            <li>Go to <span class="text-blue-400 cursor-pointer" @click="navigateToUploadDocs">Documents → Uploads</span></li>
             <li>Click <span class="text-purple-400">"Load Sample Docs"</span> to add sample documents</li>
             <li>Return to this Graph tab</li>
             <li>Click the <span class="text-green-400">"Extract"</span> button above to analyze relationships</li>
           </ol>
+          <div v-if="documentCount > 0" class="mt-2 p-2 bg-indigo-900 rounded">
+            <p>You have {{ documentCount }} document(s) uploaded. Click "Extract" to visualize them.</p>
+          </div>
         </div>
         <div v-else>
           Found {{ nodes.length }} entities and {{ links.length }} relationships from documents.
@@ -51,11 +55,12 @@ export default {
   setup() {
     const { gatherLocalHistory } = useHistory();
     const { emit, on, off } = useRealTime();
-    const { setSelectedDocument } = useDocuments();
+    const { setSelectedDocument, documents } = useDocuments();
     const graphContainer = Vue.ref(null);
     const nodes = Vue.ref([]);
     const links = Vue.ref([]);
     const currentLayout = Vue.ref('force');
+    const documentCount = Vue.ref(0);
     let simulation = null;
     let svg = null;
     let width = 0;
@@ -65,14 +70,30 @@ export default {
     function navigateToDocuments() {
       emit('update-tab', { tab: 'Documents', subTab: 'Viewer' });
     }
+    
+    // Function to navigate to Upload Documents tab
+    function navigateToUploadDocs() {
+      emit('update-tab', { tab: 'Documents', subTab: 'Uploads' });
+    }
+
+    // Update document count
+    function updateDocumentCount() {
+      const history = gatherLocalHistory();
+      documentCount.value = history.documents?.length || 0;
+      console.log(`Found ${documentCount.value} documents in history`);
+    }
 
     // Handle view-document events from clicks on the graph
     on('view-document', (data) => {
       if (data && data.documentId) {
+        console.log('Attempting to view document:', data.documentId);
         const history = gatherLocalHistory();
         const document = history.documents.find(doc => doc.id === data.documentId);
         if (document) {
+          console.log('Document found, setting selected document');
           setSelectedDocument(document);
+        } else {
+          console.error('Document not found:', data.documentId);
         }
       }
     });
@@ -84,7 +105,10 @@ export default {
     
     // Initialize D3 visualization
     function initGraph() {
-      if (!graphContainer.value) return;
+      if (!graphContainer.value) {
+        console.error('Graph container reference not found');
+        return;
+      }
       
       // Clear previous graph
       if (svg) {
@@ -95,6 +119,14 @@ export default {
       const rect = graphContainer.value.getBoundingClientRect();
       width = rect.width;
       height = rect.height;
+      
+      if (width === 0 || height === 0) {
+        console.error('Container dimensions are zero');
+        setTimeout(initGraph, 100); // Retry after delay
+        return;
+      }
+      
+      console.log(`Initializing graph with ${nodes.value.length} nodes and ${links.value.length} links`);
       
       // Create SVG
       svg = d3.select(graphContainer.value)
@@ -199,6 +231,7 @@ export default {
           // Navigate to document when clicking on document nodes
           if (d.type === 'document') {
             // Emit event to view the document
+            console.log('Clicked on document node:', d.id);
             emit('view-document', { documentId: d.id });
             // Navigate to documents tab
             navigateToDocuments();
@@ -455,8 +488,16 @@ export default {
     
     // Extract relationships from documents
     function extractRelationships() {
+      console.log('Extracting relationships from documents...');
       const history = gatherLocalHistory();
       const documents = history.documents || [];
+      
+      console.log(`Found ${documents.length} documents in history`);
+      
+      if (documents.length === 0) {
+        alert("No documents found. Please upload documents in the Documents section first.");
+        return;
+      }
       
       // Reset graph data
       nodes.value = [];
@@ -493,7 +534,12 @@ export default {
       
       // Add all documents as primary nodes
       documents.forEach(doc => {
-        if (!doc.content || typeof doc.content !== 'string') return;
+        if (!doc.content || typeof doc.content !== 'string') {
+          console.log(`Skipping document ${doc.id} - missing content`);
+          return;
+        }
+        
+        console.log(`Processing document: ${doc.name} (${doc.id})`);
         
         // Add document node with "document" type
         addNodeIfNotExists(doc.id, doc.name || 'Untitled Document', 'document');
@@ -505,6 +551,7 @@ export default {
         
         // Extract people
         const people = [...new Set(doc.content.match(personRegex) || [])];
+        console.log(`Found ${people.length} people in document ${doc.name}`);
         people.forEach((person, i) => {
           const personId = `person_${doc.id}_${i}`;
           addNodeIfNotExists(personId, person, 'person');
@@ -513,6 +560,7 @@ export default {
         
         // Extract organizations
         const orgs = [...new Set(doc.content.match(orgRegex) || [])];
+        console.log(`Found ${orgs.length} organizations in document ${doc.name}`);
         orgs.forEach((org, i) => {
           const orgId = `org_${doc.id}_${i}`;
           addNodeIfNotExists(orgId, org, 'organization');
@@ -521,6 +569,7 @@ export default {
         
         // Extract locations
         const locations = [...new Set(doc.content.match(locationRegex) || [])];
+        console.log(`Found ${locations.length} locations in document ${doc.name}`);
         locations.forEach((location, i) => {
           const locationId = `loc_${doc.id}_${i}`;
           addNodeIfNotExists(locationId, location, 'location');
@@ -528,8 +577,12 @@ export default {
         });
       });
       
+      console.log(`Created ${nodes.value.length} nodes from documents`);
+      
       // Connect all documents to each other directly
       const documentNodes = nodes.value.filter(node => node.type === 'document');
+      console.log(`Found ${documentNodes.length} document nodes`);
+      
       if (documentNodes.length > 1) {
         for (let i = 0; i < documentNodes.length; i++) {
           for (let j = i + 1; j < documentNodes.length; j++) {
@@ -609,11 +662,13 @@ export default {
         });
       }
       
-      // If no documents are found, show a message
+      // If no nodes are found after processing, show a message
       if (nodes.value.length === 0) {
-        alert("No documents found. Please upload documents in the Documents section first.");
+        alert("No entities found in documents. Try adding more documents with named entities.");
         return;
       }
+      
+      console.log(`Final graph: ${nodes.value.length} nodes and ${links.value.length} links`);
       
       // Initialize the graph
       setTimeout(() => {
@@ -621,30 +676,30 @@ export default {
       }, 10);
     }
     
+    // Update document count when mounted and when documents change
+    Vue.onMounted(() => {
+      updateDocumentCount();
+    });
+    
+    // Watch for changes in the documents collection
+    Vue.watch(
+      documents,
+      () => {
+        updateDocumentCount();
+      },
+      { deep: true }
+    );
+    
     // Initialize the graph when mounted
     Vue.onMounted(() => {
       // Add a small delay to ensure the container has been rendered
       setTimeout(() => {
         // Check if there are documents
-        const history = gatherLocalHistory();
-        const documents = history.documents || [];
+        updateDocumentCount();
         
-        if (documents.length > 0) {
-          extractRelationships(); // Start with real documents if available
-        } else {
-          // Just initialize an empty graph
-          initGraph();
-        }
+        // Initialize empty graph (don't extract automatically)
+        initGraph();
       }, 100);
-    });
-    
-    // Update the graph layout when window is resized
-    Vue.onBeforeUnmount(() => {
-      window.removeEventListener('resize', initGraph);
-    });
-    
-    Vue.onMounted(() => {
-      window.addEventListener('resize', initGraph);
     });
     
     return {
@@ -654,7 +709,9 @@ export default {
       links,
       currentLayout,
       setLayout,
-      navigateToDocuments
+      navigateToDocuments,
+      navigateToUploadDocs,
+      documentCount
     };
   }
 };

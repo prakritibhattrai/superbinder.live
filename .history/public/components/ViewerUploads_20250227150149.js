@@ -220,6 +220,8 @@ export default {
         'unemployment.txt'
       ];
       
+      let loadedCount = 0;
+      
       for (const filename of sampleFiles) {
         try {
           const response = await fetch(`/sample_docs/${filename}`);
@@ -237,12 +239,57 @@ export default {
           );
           
           saveDocument(doc);
+          loadedCount++;
         } catch (error) {
           console.error(`Error loading ${filename}:`, error);
         }
       }
       
-      alert("Sample documents loaded successfully!");
+      if (loadedCount === 0) {
+        // Try alternate path if no files loaded
+        // Create basic sample documents directly if fetching fails
+        createSampleDocumentsDirectly();
+      } else {
+        alert("Sample documents loaded successfully!");
+        // Navigate to the Graph tab after loading
+        emit('update-tab', { tab: 'Graph' });
+      }
+    }
+    
+    // Create sample documents directly if fetch fails
+    function createSampleDocumentsDirectly() {
+      const samples = [
+        {
+          name: "Climate Change",
+          content: "Climate change remains one of the most pressing challenges of the 21st century. According to the Intergovernmental Panel on Climate Change (IPCC), global temperatures have already risen significantly. Key organizations like United Nations and World Meteorological Organization are monitoring the situation. People like Bill Gates and Greta Thunberg are working on solutions."
+        },
+        {
+          name: "City of Edmonton",
+          content: "Edmonton is the capital city of Alberta, Canada. Mayor Amarjeet Sohi leads the Edmonton City Council. The Edmonton Economic Development Corporation promotes business growth. The University of Alberta ranks among Canada's top research institutions."
+        },
+        {
+          name: "Artificial Intelligence",
+          content: "Artificial Intelligence represents one of the most transformative technologies of our time. Geoffrey Hinton, often called the Godfather of Deep Learning, has pioneered neural network research. Organizations like Google DeepMind and OpenAI are leading innovation in this field."
+        },
+        {
+          name: "Unemployment",
+          content: "Unemployment represents one of the most significant economic challenges. The International Labour Organization reports on global trends. In the United States, the Department of Labor oversees unemployment programs. Companies like Microsoft and IBM offer retraining initiatives."
+        }
+      ];
+      
+      samples.forEach(sample => {
+        const doc = createDocument(
+          `sample_${sample.name.toLowerCase().replace(/\s+/g, '_')}.txt`,
+          sample.name,
+          sample.content,
+          'text'
+        );
+        saveDocument(doc);
+      });
+      
+      alert("Sample documents created successfully!");
+      // Navigate to the Graph tab after loading
+      emit('update-tab', { tab: 'Graph' });
     }
 
     return {

@@ -1,10 +1,13 @@
 // composables/useDocuments.js
 import { useRealTime } from './useRealTime.js';
 import { processFile } from '../utils/files/fileProcessor.js';
+import { useHistory } from './useHistory.js';
 
 const documents = Vue.ref([]);
 const selectedDocument = Vue.ref(null);
 const { emit, on, off } = useRealTime();
+const clippedContent = Vue.ref('');
+const { gatherLocalHistory, saveToLocalHistory } = useHistory();
 
 const eventHandlers = new WeakMap();
 
@@ -53,6 +56,7 @@ export function useDocuments() {
   });
 
   async function addDocument(file) {
+    console.log('Adding document from file:', file.name);
     const doc = await processFile(file);
     if (doc.status === 'complete') {
       const documentWithMetadata = {
@@ -73,38 +77,56 @@ export function useDocuments() {
 
   // Add saveDocument function that was missing
   function saveDocument(doc) {
-    // Make sure we're not adding a duplicate
-    if (!documents.value.some(d => d.id === doc.id)) {
-      documents.value = [...documents.value, doc];
-      emit('add-document', { document: doc });
-      console.log('Document saved:', doc);
+    console.log('Saving document:', doc.name);
+    
+    // Check if document with same ID already exists
+    const existingIndex = documents.value.findIndex(d => d.id === doc.id);
+    if (existingIndex !== -1) {
+      // Update existing document
+      documents.value[existingIndex] = doc;
+      console.log(`Updated existing document: ${doc.name} (${doc.id})`);
     } else {
-      console.warn('Document with ID already exists:', doc.id);
+      // Add new document
+      documents.value.push(doc);
+      console.log(`Added new document: ${doc.name} (${doc.id})`);
     }
+    
+    // Save to local history
+    saveToLocalHistory({ documents: documents.value });
+    
+    // Emit event
+    emit('document-saved', { document: doc });
+    
     return doc;
   }
 
   function removeDocument(id) { // Changed from documentId to id
+    console.log('Removing document:', id);
     documents.value = documents.value.filter(doc => doc.id !== id);
-    emit('remove-document', { id }); // Changed from documentId to id
+    emit('document-removed', { id }); // Changed from documentId to id
     if (selectedDocument.value && selectedDocument.value.id === id) {
       selectedDocument.value = null;
     }
   }
 
   function updateDocument(id, name) { // Changed from documentId to id
+    console.log(`Updating document ${id} with name: ${name}`);
     const doc = documents.value.find(d => d.id === id);
     if (doc) {
       doc.name = name.trim();
       if (selectedDocument.value && selectedDocument.value.id === id) {
         selectedDocument.value.name = name.trim();
       }
-      emit('rename-document', { id, name: name.trim() }); // Changed from documentId to id
+      emit('document-updated', { document: { ...doc, updatedAt: Date.now() } });
+    } else {
+      console.error(`Document with ID ${id} not found for update`);
     }
   }
 
   function setSelectedDocument(doc) {
+    console.log('Setting selected document:', doc?.name);
     selectedDocument.value = doc;
+    emit('document-selected', { document: doc });
   }
 
   function cleanup() {
@@ -118,14 +140,36 @@ export function useDocuments() {
     }
   }
 
+  // Load documents from local history
+  function loadDocuments() {
+    const history = gatherLocalHistory();
+    if (history.documents && history.documents.length > 0) {
+      documents.value = history.documents;
+      console.log(`Loaded ${documents.value.length} documents from history`);
+    } else {
+      documents.value = [];
+      console.log('No documents found in history');
+    }
+  }
+
+  // Load documents on setup
+  loadDocuments();
+
+  // Listen for events
+  on('document-saved', () => loadDocuments());
+  on('document-removed', () => loadDocuments());
+  on('document-updated', () => loadDocuments());
+  on('state-synced', () => loadDocuments());
+
   return {
     documents,
     selectedDocument,
+    clippedContent,
     addDocument,
     removeDocument,
     updateDocument,
     setSelectedDocument,
-    saveDocument, // Export the saveDocument function
+    saveDocument,
     cleanup,
   };
 }

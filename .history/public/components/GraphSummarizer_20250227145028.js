@@ -36,13 +36,7 @@ export default {
         <div v-else>
           Found {{ nodes.length }} entities and {{ links.length }} relationships from documents.
           <p class="mt-1 text-xs">
-            <i class="pi pi-info-circle"></i> Click on document nodes to view their contents. 
-            <span class="flex items-center mt-1">
-              <span class="w-3 h-0.5 bg-green-500 mx-1 inline-block" style="border-top: 1px dashed #4caf50;"></span> Green dashed lines: Basic document connections
-            </span>
-            <span class="flex items-center mt-1">
-              <span class="w-3 h-0.5 bg-purple-500 mx-1 inline-block"></span> Purple solid lines: Documents sharing common entities
-            </span>
+            <i class="pi pi-info-circle"></i> Click on document nodes to view their contents. Larger nodes represent documents, colored connections show shared entities.
           </p>
         </div>
       </div>
@@ -131,16 +125,9 @@ export default {
         .attr("stroke", d => {
           // Use different colors for different types of links
           if (d.source.type === 'document' && d.target.type === 'document') {
-            if (d.type === 'connected') {
-              return "#4caf50"; // Green for basic document connections
-            }
-            return "#9c27b0"; // Purple for document-document links with shared entities
+            return "#9c27b0"; // Purple for document-document links
           }
           return "#999";
-        })
-        .attr("stroke-dasharray", d => {
-          // Use dashed lines for basic connections
-          return d.type === 'connected' ? "5,5" : "none";
         });
       
       // Create node tooltips

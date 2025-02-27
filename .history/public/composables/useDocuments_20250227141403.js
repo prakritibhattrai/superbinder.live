@@ -61,25 +61,11 @@ export function useDocuments() {
         createdBy: useRealTime().displayName.value,
         timestamp: Date.now(),
         processedContent: doc.processedContent,
-        content: doc.content || doc.processedContent, // Make sure content is available
       };
       documents.value = [...documents.value, documentWithMetadata];
       emit('add-document', { document: documentWithMetadata });
     } else if (doc.status === 'error') {
       console.error(`Failed to process file ${file.name}:`, doc);
-    }
-    return doc;
-  }
-
-  // Add saveDocument function that was missing
-  function saveDocument(doc) {
-    // Make sure we're not adding a duplicate
-    if (!documents.value.some(d => d.id === doc.id)) {
-      documents.value = [...documents.value, doc];
-      emit('add-document', { document: doc });
-      console.log('Document saved:', doc);
-    } else {
-      console.warn('Document with ID already exists:', doc.id);
     }
     return doc;
   }
@@ -125,7 +111,6 @@ export function useDocuments() {
     removeDocument,
     updateDocument,
     setSelectedDocument,
-    saveDocument, // Export the saveDocument function
     cleanup,
   };
 }

@@ -85,7 +85,7 @@ export default {
     </div>
   `,
   setup(props) {
-    const { documents, addDocument, removeDocument, setSelectedDocument, updateDocument, saveDocument } = useDocuments();
+    const { documents, addDocument, removeDocument, setSelectedDocument, updateDocument } = useDocuments();
     const { emit } = useRealTime();
     const dropZone = Vue.ref(null);
     const fileInput = Vue.ref(null);
@@ -236,7 +236,7 @@ export default {
             'text'
           );
           
-          saveDocument(doc);
+          addDocument(doc);
         } catch (error) {
           console.error(`Error loading ${filename}:`, error);
         }

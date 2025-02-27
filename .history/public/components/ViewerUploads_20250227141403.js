@@ -11,25 +11,8 @@ export default {
     },
   },
   template: `
-    <div class="h-full p-4 overflow-y-auto">
-      <div class="flex justify-between items-center">
-        <h2 class="text-xl font-semibold mb-4 text-green-400">Uploads</h2>
-        <div class="space-x-2">
-          <button @click="loadSampleDocuments" class="px-3 py-1 bg-purple-600 hover:bg-purple-700 rounded text-sm">
-            Load Sample Docs
-          </button>
-          <button @click="openFileInput" class="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm">
-            Upload Files
-          </button>
-        </div>
-      </div>
-      <input 
-        ref="fileInput" 
-        type="file" 
-        @change="handleFileUpload" 
-        class="hidden" 
-        multiple
-      />
+    <div class="h-full overflow-y-auto p-2">
+      <h3 class="text-lg font-semibold text-purple-400 mb-4">Uploads</h3>
       
       <!-- Drag and Drop Area with Upload Button -->
       <div 
@@ -44,6 +27,14 @@ export default {
           <i class="pi pi-file-plus text-xl"></i>
           <span>Drag and drop files here, or click to upload</span>
         </div>
+        <input 
+          type="file" 
+          ref="fileInput" 
+          class="hidden" 
+          @change="handleFileUpload" 
+          accept=".docx,.pdf,.pptx,.html,.txt,.js,.json,.css,.md,.xlsx"
+          multiple
+        />
       </div>
 
       <!-- Document List -->
@@ -85,7 +76,7 @@ export default {
     </div>
   `,
   setup(props) {
-    const { documents, addDocument, removeDocument, setSelectedDocument, updateDocument, saveDocument } = useDocuments();
+    const { documents, addDocument, removeDocument, setSelectedDocument, updateDocument } = useDocuments();
     const { emit } = useRealTime();
     const dropZone = Vue.ref(null);
     const fileInput = Vue.ref(null);
@@ -197,54 +188,6 @@ export default {
       return iconMap[extension] || iconMap.default;
     }
 
-    // Function to create a new document
-    function createDocument(id, name, content, type = 'text') {
-      const timestamp = Date.now();
-      return {
-        id: id || `doc_${timestamp}_${Math.random().toString(36).substring(2, 9)}`,
-        name,
-        content,
-        type,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-        version: 1,
-      };
-    }
-    
-    // Function to load sample documents
-    async function loadSampleDocuments() {
-      const sampleFiles = [
-        'climate_change.txt',
-        'city_of_edmonton.txt',
-        'artificial_intelligence.txt',
-        'unemployment.txt'
-      ];
-      
-      for (const filename of sampleFiles) {
-        try {
-          const response = await fetch(`/sample_docs/${filename}`);
-          if (!response.ok) {
-            console.error(`Failed to load ${filename}: ${response.statusText}`);
-            continue;
-          }
-          
-          const content = await response.text();
-          const doc = createDocument(
-            `sample_${filename}`, 
-            filename.replace('.txt', '').split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' '), 
-            content, 
-            'text'
-          );
-          
-          saveDocument(doc);
-        } catch (error) {
-          console.error(`Error loading ${filename}:`, error);
-        }
-      }
-      
-      alert("Sample documents loaded successfully!");
-    }
-
     return {
       documents,
       dropZone,
@@ -262,7 +205,6 @@ export default {
       finishEditing,
       removeDocumentLocal,
       getFileIcon,
-      loadSampleDocuments
     };
   },
 };

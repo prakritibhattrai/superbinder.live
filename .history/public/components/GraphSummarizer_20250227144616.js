@@ -1,6 +1,5 @@
 import { useHistory } from '../composables/useHistory.js';
 import { useRealTime } from '../composables/useRealTime.js';
-import { useDocuments } from '../composables/useDocuments.js';
 
 export default {
   name: 'GraphSummarizer',
@@ -24,34 +23,14 @@ export default {
       </div>
       <div ref="graphContainer" class="flex-1 bg-gray-800 rounded-lg border border-gray-600 overflow-hidden"></div>
       <div class="mt-2 text-gray-400 text-sm">
-        <div v-if="nodes.length === 0">
-          <p>No relationships extracted yet. Follow these steps:</p>
-          <ol class="list-decimal pl-5 mt-2 space-y-1 text-sm">
-            <li>Go to <span class="text-blue-400 cursor-pointer" @click="navigateToDocuments">Documents → Uploads</span></li>
-            <li>Click <span class="text-purple-400">"Load Sample Docs"</span> to add sample documents</li>
-            <li>Return to this Graph tab</li>
-            <li>Click the <span class="text-green-400">"Extract"</span> button above to analyze relationships</li>
-          </ol>
-        </div>
-        <div v-else>
-          Found {{ nodes.length }} entities and {{ links.length }} relationships from documents.
-          <p class="mt-1 text-xs">
-            <i class="pi pi-info-circle"></i> Click on document nodes to view their contents. 
-            <span class="flex items-center mt-1">
-              <span class="w-3 h-0.5 bg-green-500 mx-1 inline-block" style="border-top: 1px dashed #4caf50;"></span> Green dashed lines: Basic document connections
-            </span>
-            <span class="flex items-center mt-1">
-              <span class="w-3 h-0.5 bg-purple-500 mx-1 inline-block"></span> Purple solid lines: Documents sharing common entities
-            </span>
-          </p>
-        </div>
+        <div v-if="nodes.length === 0">No relationships extracted yet. Click 'Extract' to analyze documents.</div>
+        <div v-else>Found {{ nodes.length }} entities and {{ links.length }} relationships from documents.</div>
       </div>
     </div>
   `,
   setup() {
     const { gatherLocalHistory } = useHistory();
-    const { emit, on, off } = useRealTime();
-    const { setSelectedDocument } = useDocuments();
+    const { emit } = useRealTime();
     const graphContainer = Vue.ref(null);
     const nodes = Vue.ref([]);
     const links = Vue.ref([]);
@@ -65,22 +44,6 @@ export default {
     function navigateToDocuments() {
       emit('update-tab', { tab: 'Documents', subTab: 'Viewer' });
     }
-
-    // Handle view-document events from clicks on the graph
-    on('view-document', (data) => {
-      if (data && data.documentId) {
-        const history = gatherLocalHistory();
-        const document = history.documents.find(doc => doc.id === data.documentId);
-        if (document) {
-          setSelectedDocument(document);
-        }
-      }
-    });
-
-    // Clean up event listeners when component is unmounted
-    Vue.onBeforeUnmount(() => {
-      off('view-document');
-    });
     
     // Initialize D3 visualization
     function initGraph() {
@@ -121,27 +84,7 @@ export default {
         .selectAll("line")
         .data(links.value)
         .join("line")
-        .attr("stroke-width", d => {
-          // Make document-to-document links thicker
-          if (d.source.type === 'document' && d.target.type === 'document') {
-            return Math.sqrt(d.value) + 2;
-          }
-          return Math.sqrt(d.value);
-        })
-        .attr("stroke", d => {
-          // Use different colors for different types of links
-          if (d.source.type === 'document' && d.target.type === 'document') {
-            if (d.type === 'connected') {
-              return "#4caf50"; // Green for basic document connections
-            }
-            return "#9c27b0"; // Purple for document-document links with shared entities
-          }
-          return "#999";
-        })
-        .attr("stroke-dasharray", d => {
-          // Use dashed lines for basic connections
-          return d.type === 'connected' ? "5,5" : "none";
-        });
+        .attr("stroke-width", d => Math.sqrt(d.value));
       
       // Create node tooltips
       const tooltip = d3.select(graphContainer.value)
@@ -158,35 +101,18 @@ export default {
       
       // Create nodes
       const node = g.append("g")
+        .attr("stroke", "#fff")
+        .attr("stroke-width", 1.5)
         .selectAll("circle")
         .data(nodes.value)
         .join("circle")
-        .attr("r", d => {
-          // Make document nodes larger
-          if (d.type === 'document') {
-            return Math.max(10, 5 + d.connections);
-          }
-          return Math.max(5, 3 + d.connections);
-        })
+        .attr("r", d => Math.max(5, 3 + d.connections))
         .attr("fill", d => typeToColor(d.type))
-        .attr("stroke", d => {
-          // Add stroke to document nodes
-          return d.type === 'document' ? "#fff" : "none";
-        })
-        .attr("stroke-width", d => d.type === 'document' ? 2 : 1.5)
         .on("mouseover", (event, d) => {
           tooltip.transition()
             .duration(200)
             .style("opacity", 0.9);
-          
-          let tooltipContent = `<strong>${d.name}</strong><br/>Type: ${d.type}<br/>Links: ${d.connections}`;
-          
-          // For document nodes, add a "View" link
-          if (d.type === 'document') {
-            tooltipContent += `<br/><a href="#" style="color: #8be9fd; text-decoration: underline;">View document</a>`;
-          }
-          
-          tooltip.html(tooltipContent)
+          tooltip.html(`<strong>${d.name}</strong><br/>Type: ${d.type}<br/>Links: ${d.connections}`)
             .style("left", (event.pageX + 10) + "px")
             .style("top", (event.pageY - 28) + "px");
         })
@@ -194,15 +120,6 @@ export default {
           tooltip.transition()
             .duration(500)
             .style("opacity", 0);
-        })
-        .on("click", (event, d) => {
-          // Navigate to document when clicking on document nodes
-          if (d.type === 'document') {
-            // Emit event to view the document
-            emit('view-document', { documentId: d.id });
-            // Navigate to documents tab
-            navigateToDocuments();
-          }
         })
         .call(drag(simulation));
       
@@ -212,26 +129,19 @@ export default {
         .data(nodes.value)
         .join("text")
         .text(d => d.name)
-        .attr("font-size", d => d.type === 'document' ? "10px" : "8px")
-        .attr("font-weight", d => d.type === 'document' ? "bold" : "normal")
+        .attr("font-size", "8px")
         .attr("dx", 8)
         .attr("dy", ".35em")
-        .attr("fill", d => d.type === 'document' ? "#8be9fd" : "white");
+        .attr("fill", "white");
       
       // Create link labels
       const linkLabels = g.append("g")
         .selectAll("text")
         .data(links.value)
         .join("text")
-        .text(d => {
-          // Only show labels for document-to-document links or when the link has a high value
-          if ((d.source.type === 'document' && d.target.type === 'document') || d.value > 1) {
-            return d.type;
-          }
-          return '';
-        })
+        .text(d => d.type)
         .attr("font-size", "7px")
-        .attr("fill", d => (d.source.type === 'document' && d.target.type === 'document') ? "#ff79c6" : "lightgray")
+        .attr("fill", "lightgray")
         .attr("text-anchor", "middle");
       
       if (currentLayout.value === 'force') {
@@ -246,17 +156,8 @@ export default {
     // Apply force-directed layout
     function applyForceLayout(node, link, labels, linkLabels) {
       simulation = d3.forceSimulation(nodes.value)
-        .force("link", d3.forceLink(links.value).id(d => d.id).distance(d => {
-          // Make document-to-document links longer for better visibility
-          if (d.source.type === 'document' && d.target.type === 'document') {
-            return 200;
-          }
-          return 100;
-        }))
-        .force("charge", d3.forceManyBody().strength(d => {
-          // Make document nodes have stronger repulsion
-          return d.type === 'document' ? -400 : -200;
-        }))
+        .force("link", d3.forceLink(links.value).id(d => d.id).distance(100))
+        .force("charge", d3.forceManyBody().strength(-200))
         .force("center", d3.forceCenter(width / 2, height / 2))
         .on("tick", () => {
           link
@@ -528,29 +429,7 @@ export default {
         });
       });
       
-      // Connect all documents to each other directly
-      const documentNodes = nodes.value.filter(node => node.type === 'document');
-      if (documentNodes.length > 1) {
-        for (let i = 0; i < documentNodes.length; i++) {
-          for (let j = i + 1; j < documentNodes.length; j++) {
-            const docA = documentNodes[i];
-            const docB = documentNodes[j];
-            
-            // Check if a link already exists between these documents
-            const existingLink = links.value.find(
-              l => (l.source === docA.id && l.target === docB.id) ||
-                  (l.source === docB.id && l.target === docA.id)
-            );
-            
-            if (!existingLink) {
-              // Create a direct connection between documents
-              addLink(docA.id, docB.id, 'connected', 2);
-            }
-          }
-        }
-      }
-      
-      // Additionally find relationships between documents based on common entities
+      // Find relationships between documents based on common entities
       if (documents.length > 1) {
         // Create a map of entities to documents that mention them
         const entityToDocuments = {};
@@ -594,10 +473,6 @@ export default {
                   if (existingLink) {
                     // Increment weight of existing link
                     existingLink.value += 1;
-                    // Update link type to show shared entity
-                    if (!existingLink.type.includes(entity.name)) {
-                      existingLink.type += ` & ${entity.type} "${entity.name}"`;
-                    }
                   } else {
                     // Create new link
                     addLink(docAId, docBId, `share ${entity.type} "${entity.name}"`, 1);
