@@ -12,7 +12,7 @@ export default {
   },
   template: `
     <div class="h-full flex flex-col overflow-hidden p-4 text-white">
-      <h1 class="text-2xl font-bold mb-6">Dashboard</h1>
+     <!-- <h1 class="text-2xl font-bold mb-6">Dashboard</h1> -->
       <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 overflow-y-auto">
         <!-- Users (Dedicated Column) -->
         <div class="bg-gray-800 p-6 rounded-lg shadow-lg col-span-1">
