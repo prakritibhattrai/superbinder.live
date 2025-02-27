@@ -25,7 +25,7 @@ export default {
           class="bg-gray-700 rounded-lg p-4 cursor-move transition-transform duration-300"
           :class="{ 'dragging': isDraggingQuestion && draggedQuestionIndex === index }"
           @mousedown="startDragQuestion(index, $event)"
-          @touchstart="startDragQuestion(index, $event)"
+          @touchstart.passive="startDragQuestion(index, $event)"
         >
           <div class="flex items-center gap-2 mb-2">
             <span class="text-gray-400 cursor-move">⋮⋮</span>
@@ -51,7 +51,7 @@ export default {
               class="p-2 bg-gray-600 rounded-lg flex items-center gap-2 cursor-move transition-transform duration-300"
               :class="{ 'dragging': isDraggingAnswer && draggedAnswerIndex[question.id] === ansIndex }"
               @mousedown="startDragAnswer(question.id, ansIndex, $event)"
-              @touchstart="startDragAnswer(question.id, ansIndex, $event)"
+              @touchstart.passive="startDragAnswer(question.id, ansIndex, $event)"
             >
               <span class="text-gray-400 cursor-move">⋮⋮</span>
               <div

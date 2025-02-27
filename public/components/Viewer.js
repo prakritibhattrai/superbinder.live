@@ -6,7 +6,7 @@ import ViewerClips from './ViewerClips.js';
 import ViewerTranscribe from './ViewerTranscribe.js';
 import ViewerQuestions from './ViewerQuestions.js';
 import ViewerArtifacts from './ViewerArtifacts.js';
-import Uploads from './Uploads.js'; // Renamed DocumentSidebar.js
+import ViewerUploads from './ViewerUploads.js';
 import { useRealTime } from '../composables/useRealTime.js';
 
 export default {
@@ -19,7 +19,7 @@ export default {
     ViewerTranscribe,
     ViewerQuestions,
     ViewerArtifacts,
-    Uploads,
+    ViewerUploads,
   },
   props: {
     activeTab: {
@@ -28,13 +28,16 @@ export default {
     },
     activeDocumentSubTab: {
       type: String,
-      default: 'Uploads', // Default to Uploads for Documents
+      default: 'Uploads',
+    },
+    updateTab: {
+      type: Function,
+      required: true,
     },
   },
-  setup() {
+  setup(props) {
     const { emit } = useRealTime();
 
-    // Sync tab changes via Socket.io (optional, since Binder.js handles this)
     function updateActiveTab(tab, subTab = null) {
       emit('update-tab', { tab, subTab });
     }
@@ -44,7 +47,7 @@ export default {
     };
   },
   template: `
-    <div class="h-full p-4">
+    <div class="h-full overflow-y-auto p-4">
       <viewer-goals v-show="activeTab === 'Goals'" />
       <viewer-agents v-show="activeTab === 'Agents'" />
       <viewer-documents v-show="activeTab === 'Documents' && activeDocumentSubTab === 'Viewer'" />
@@ -52,7 +55,10 @@ export default {
       <viewer-transcribe v-show="activeTab === 'Transcriptions'" />
       <viewer-questions v-show="activeTab === 'Q&A'" />
       <viewer-artifacts v-show="activeTab === 'Artifacts'" />
-      <uploads v-show="activeTab === 'Documents' && activeDocumentSubTab === 'Uploads'" />
+      <viewer-uploads 
+        v-show="activeTab === 'Documents' && activeDocumentSubTab === 'Uploads'" 
+        :update-tab="updateTab"
+      />
     </div>
   `,
 };

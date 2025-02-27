@@ -6,48 +6,45 @@ const documents = Vue.ref([]);
 const selectedDocument = Vue.ref(null);
 const { emit, on, off } = useRealTime();
 
-// Store event handlers for cleanup
 const eventHandlers = new WeakMap();
 
 export function useDocuments() {
-  // Handle adding a document
   function handleAddDocument({ document }) {
+    console.log('Handling add-document:', document);
     if (!documents.value.some(d => d.id === document.id)) {
-      documents.value = [...documents.value, document]; // Preserve order
+      documents.value = [...documents.value, document];
     }
   }
 
-  // Handle removing a document
-  function handleRemoveDocument({ documentId }) {
-    documents.value = documents.value.filter(d => d.id !== documentId);
-    if (selectedDocument.value && selectedDocument.value.id === documentId) {
-      selectedDocument.value = null; // Clear selection if removed
+  function handleRemoveDocument({ id }) { // Changed from documentId to id
+    console.log('Handling remove-document:', id);
+    documents.value = documents.value.filter(d => d.id !== id);
+    if (selectedDocument.value && selectedDocument.value.id === id) {
+      selectedDocument.value = null;
     }
   }
 
-  // Handle renaming/updating a document
-  function handleRenameDocument({ documentId, name }) {
-    const doc = documents.value.find(d => d.id === documentId);
+  function handleRenameDocument({ id, name }) { // Changed from documentId to id
+    console.log('Handling rename-document:', { id, name });
+    const doc = documents.value.find(d => d.id === id);
     if (doc) {
       doc.name = name.trim();
-      if (selectedDocument.value && selectedDocument.value.id === documentId) {
-        selectedDocument.value.name = name.trim(); // Sync selected document
+      if (selectedDocument.value && selectedDocument.value.id === id) {
+        selectedDocument.value.name = name.trim();
       }
     }
   }
 
-  // Handle history snapshot
   function handleSnapshot(history) {
-    documents.value = (history.documents || []).sort((a, b) => a.timestamp - b.timestamp); // Maintain order by timestamp
+    console.log('Handling history snapshot for documents:', history.documents);
+    documents.value = (history.documents || []).sort((a, b) => a.timestamp - b.timestamp);
   }
 
-  // Register event listeners
   const addDocumentHandler = on('add-document', handleAddDocument);
   const removeDocumentHandler = on('remove-document', handleRemoveDocument);
   const renameDocumentHandler = on('rename-document', handleRenameDocument);
   const snapshotHandler = on('history-snapshot', handleSnapshot);
 
-  // Store handlers for cleanup
   eventHandlers.set(useDocuments, {
     addDocument: addDocumentHandler,
     removeDocument: removeDocumentHandler,
@@ -55,54 +52,47 @@ export function useDocuments() {
     snapshot: snapshotHandler,
   });
 
-  // Add a document with file processing
   async function addDocument(file) {
     const doc = await processFile(file);
     if (doc.status === 'complete') {
-      // Ensure document has metadata consistent with agents
       const documentWithMetadata = {
-        id: doc.id, // Use existing id from processFile
+        id: doc.id,
         name: doc.name,
-        createdBy: useRealTime().displayName.value, // Add creator info
-        timestamp: Date.now(), // Add timestamp
-        processedContent: doc.processedContent, // Preserve content
-        // Add any other metadata from processFile output if needed
+        createdBy: useRealTime().displayName.value,
+        timestamp: Date.now(),
+        processedContent: doc.processedContent,
       };
       documents.value = [...documents.value, documentWithMetadata];
-      emit('add-document', { document: documentWithMetadata }); // Sync with others
+      emit('add-document', { document: documentWithMetadata });
     } else if (doc.status === 'error') {
       console.error(`Failed to process file ${file.name}:`, doc);
     }
     return doc;
   }
 
-  // Remove a document
-  function removeDocument(documentId) {
-    documents.value = documents.value.filter(doc => doc.id !== documentId);
-    emit('remove-document', { documentId }); // Sync with others
-    if (selectedDocument.value && selectedDocument.value.id === documentId) {
-      selectedDocument.value = null; // Clear selection
+  function removeDocument(id) { // Changed from documentId to id
+    documents.value = documents.value.filter(doc => doc.id !== id);
+    emit('remove-document', { id }); // Changed from documentId to id
+    if (selectedDocument.value && selectedDocument.value.id === id) {
+      selectedDocument.value = null;
     }
   }
 
-  // Update/Rename a document (only name for now, extend as needed)
-  function updateDocument(documentId, name) {
-    const doc = documents.value.find(d => d.id === documentId);
+  function updateDocument(id, name) { // Changed from documentId to id
+    const doc = documents.value.find(d => d.id === id);
     if (doc) {
       doc.name = name.trim();
-      if (selectedDocument.value && selectedDocument.value.id === documentId) {
-        selectedDocument.value.name = name.trim(); // Sync selected document
+      if (selectedDocument.value && selectedDocument.value.id === id) {
+        selectedDocument.value.name = name.trim();
       }
-      emit('rename-document', { documentId, name: name.trim() }); // Sync with others
+      emit('rename-document', { id, name: name.trim() }); // Changed from documentId to id
     }
   }
 
-  // Set selected document
   function setSelectedDocument(doc) {
     selectedDocument.value = doc;
   }
 
-  // Cleanup event listeners
   function cleanup() {
     const handlers = eventHandlers.get(useDocuments);
     if (handlers) {

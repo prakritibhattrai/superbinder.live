@@ -1,3 +1,4 @@
+// realTime.js
 const { Server } = require('socket.io');
 const fs = require('fs').promises;
 const path = require('path');
@@ -116,7 +117,7 @@ function validateEntity(payload, entityType, operation) {
       }
       return { valid: true, message: '' };
     case 'remove':
-      if (!payload.id && !payload.agentId && !payload.clipId && !payload.documentId && !payload.questionId && !payload.artifactId && !payload.transcriptId) {
+      if (!payload.id && !payload.agentId && !payload.clipId && !payload.id && !payload.questionId && !payload.artifactId && !payload.transcriptId) {
         return { valid: false, message: `Invalid ${entityType} data for ${operation}: missing id` };
       }
       return { valid: true, message: '' };
@@ -163,7 +164,7 @@ function updateUpdateState(state, payload, entityType) {
 
 function updateDeleteState(state, payload, entityType) {
   const config = entityConfigs[entityType];
-  const id = payload[config.idKey] || payload.id || payload.agentId || payload.clipId || payload.documentId || payload.questionId || payload.artifactId || payload.transcriptId;
+  const id = payload[config.idKey] || payload.id || payload.agentId || payload.clipId || payload.id || payload.questionId || payload.artifactId || payload.transcriptId;
   const newState = state.filter(item => item[config.idKey] !== id);
   if (config.orderField) {
     newState.forEach((item, index) => {
@@ -275,6 +276,12 @@ async function handleCrudOperation(channelName, userUuid, type, payload, socket)
     broadcastData = { agent: normalizedPayload };
   } else if (entityType === 'agents' && operation === 'remove') {
     broadcastData = { id: normalizedPayload[config.idKey] };
+  } else if (entityType === 'documents' && operation === 'add') {
+    broadcastData = { document: normalizedPayload }; // Preserve nested document structure
+  } else if (entityType === 'documents' && operation === 'update') {
+    broadcastData = { id: normalizedPayload.id, name: normalizedPayload.name }; // Rename keeps flat structure
+  } else if (entityType === 'documents' && operation === 'remove') {
+    broadcastData = { id: normalizedPayload[config.idKey] }; // Remove keeps flat structure
   } else {
     broadcastData = {
       ...normalizedPayload,
@@ -398,6 +405,8 @@ async function handleMessage(data, socket) {
       break;
     case 'pong':
       break;
+    case 'update-tab':
+      break;
     case 'add-chat':
       await handleCrudOperation(channelName, userUuid, 'add-chat', { id: payload.id, text: payload.text, color: payload.color, userUuid }, socket);
       break;
@@ -442,10 +451,10 @@ async function handleMessage(data, socket) {
       await handleCrudOperation(channelName, userUuid, 'add-document', { ...payload.document, userUuid }, socket);
       break;
     case 'remove-document':
-      await handleCrudOperation(channelName, userUuid, 'remove-document', { id: payload.documentId, userUuid }, socket);
+      await handleCrudOperation(channelName, userUuid, 'remove-document', { id: payload.id, userUuid }, socket);
       break;
     case 'rename-document':
-      await handleCrudOperation(channelName, userUuid, 'rename-document', { id: payload.documentId, name: payload.name, userUuid }, socket);
+      await handleCrudOperation(channelName, userUuid, 'rename-document', { id: payload.id, name: payload.name, userUuid }, socket);
       break;
     case 'add-question':
       await handleCrudOperation(channelName, userUuid, 'add-question', { ...payload.question, userUuid }, socket);

@@ -78,7 +78,7 @@ function emit(event, data, channelName, userUuid) {
     };
     socket.emit('message', payload);
   } else {
-    console.error('Socket not connected. Queuing message:', event, data);
+    console.warn('Socket not connected. Queuing message:', event, data);
   }
 }
 

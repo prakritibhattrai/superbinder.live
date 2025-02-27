@@ -73,7 +73,7 @@ export default {
           <div
             class="absolute left-0 top-0 h-full w-4 cursor-col-resize bg-transparent"
             @mousedown="startResize"
-            @touchstart="startResize"
+            @touchstart.passive="startResize"
           ></div>
         </div>
         <div ref="chatContainer" class="flex-1 overflow-y-auto p-2" @scroll.passive="handleScroll">

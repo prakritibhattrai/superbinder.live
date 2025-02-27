@@ -77,10 +77,7 @@ export function useRealTime() {
         };
         eventBus.$emit('user-joined', processedData);
         break;
-      case 'upload-to-cloud-success':
-        console.log('State uploaded to server successfully');
-        eventBus.$emit('upload-to-cloud-success', processedData);
-        break;
+    
       case 'add-chat':
         eventBus.$emit('add-chat', processedData);
         break;

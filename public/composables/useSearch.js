@@ -28,7 +28,7 @@ export function useSearch() {
           const segment = content.substring(startIdx, endIdx);
 
           searchResults.value.push({
-            documentId: doc.id,
+            id: doc.id,
             documentName: doc.name,
             segment,
             matches,

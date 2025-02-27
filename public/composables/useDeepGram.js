@@ -1,6 +1,6 @@
-// composables/useTranscripts.js
+// composables/useDeepGram.js
 
-export const useTranscripts = () => {
+export const useDeepGram = () => {
   // Supported formats for validation
   const SUPPORTED_EXTENSIONS = [
     // Audio extensions

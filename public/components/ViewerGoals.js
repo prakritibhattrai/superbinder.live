@@ -4,50 +4,54 @@ import { useGoals } from '../composables/useGoals.js';
 export default {
   name: 'ViewerGoals',
   template: `
-    <div class="h-full flex flex-col overflow-hidden p-4">
-      <div class="flex gap-2 mb-4">
-        <input
-          v-model="newGoal"
-          @keypress.enter.prevent="debounceAddGoal"
-          class="flex-1 p-2 bg-gray-700 text-white rounded-lg border border-gray-600 focus:border-purple-500 focus:outline-none"
-          placeholder="Add a new goal..."
-        />
-        <button @click.prevent="debounceAddGoal" class="py-2 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg">Add</button>
-      </div>
-      <div class="space-y-2 relative" ref="goalsContainer">
-        <!-- Reorder Indicator Line -->
-        <div
-          v-if="dragIndicator"
-          :style="{ top: dragIndicator.y + 'px', left: '8px', width: 'calc(100% - 16px)', height: '2px', backgroundColor: '#3B82F6', position: 'absolute', zIndex: 10 }"
-          class="transition-all duration-200"
-        ></div>
-        <div
-          v-for="(goal, index) in goals"
-          :key="goal.id"
-          class="p-2 bg-gray-700 rounded-lg flex items-center gap-2 min-w-0 cursor-move transition-transform duration-300"
-          :class="{ 'dragging': isDragging && draggedIndex === index, 'unselectable': isDragging }"
-          @mousedown="startDrag(index, $event)"
-          @touchstart="startDrag(index, $event)"
-        >
-          <span class="text-gray-400 mr-2" :class="{ 'unselectable': isDragging }">⋮⋮</span>
+    <div class="h-full overflow-y-auto p-4">
+      <div class="flex flex-col h-full">
+        <!-- Input Bar (Fixed at Top) -->
+        <div class="flex gap-2 mb-4 flex-shrink-0">
+          <input
+            v-model="newGoal"
+            @keypress.enter.prevent="debounceAddGoal"
+            class="flex-1 p-2 bg-gray-700 text-white rounded-lg border border-gray-600 focus:border-purple-500 focus:outline-none"
+            placeholder="Add a new goal..."
+          />
+          <button @click.prevent="debounceAddGoal" class="py-2 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg">Add</button>
+        </div>
+        <!-- Goals List (Scrollable) -->
+        <div class="flex-1 overflow-y-auto space-y-2 relative" ref="goalsContainer">
+          <!-- Reorder Indicator Line -->
           <div
-            contenteditable="true"
-            @input="handleGoalInput(goal.id, $event)"
-            class="flex-1 text-white min-w-0 break-words"
-            :class="{ 'bg-gray-600': editingGoal === goal.id }"
-            @focus="editingGoal = goal.id"
-            @blur="editingGoal = null"
-            @mousedown.stop="preventDefaultIfDragging"
-            @touchstart.stop="preventDefaultIfDragging"
+            v-if="dragIndicator"
+            :style="{ top: dragIndicator.y + 'px', left: '8px', width: 'calc(100% - 16px)', height: '2px', backgroundColor: '#3B82F6', position: 'absolute', zIndex: 10 }"
+            class="transition-all duration-200"
+          ></div>
+          <div
+            v-for="(goal, index) in goals"
+            :key="goal.id"
+            class="p-2 bg-gray-700 rounded-lg flex items-center gap-2 min-w-0 cursor-move transition-transform duration-300"
+            :class="{ 'dragging': isDragging && draggedIndex === index, 'unselectable': isDragging }"
+            @mousedown="startDrag(index, $event)"
+            @touchstart.passive="startDrag(index, $event)"
           >
-            {{ goal.text }}
+            <span class="text-gray-400 mr-2" :class="{ 'unselectable': isDragging }">⋮⋮</span>
+            <div
+              contenteditable="true"
+              @input="handleGoalInput(goal.id, $event)"
+              class="flex-1 text-white min-w-0 break-words"
+              :class="{ 'bg-gray-600': editingGoal === goal.id }"
+              @focus="editingGoal = goal.id"
+              @blur="editingGoal = null"
+              @mousedown.stop="preventDefaultIfDragging"
+              @touchstart.passive.stop="preventDefaultIfDragging"
+            >
+              {{ goal.text }}
+            </div>
+            <button @click.stop="removeGoal(goal.id)" class="text-red-400 hover:text-red-300 ml-2">
+              <i class="pi pi-times"></i>
+            </button>
           </div>
-          <button @click.stop="removeGoal(goal.id)" class="text-red-400 hover:text-red-300 ml-2">
-            <i class="pi pi-times"></i>
-          </button>
+          <div v-if="goals.length === 0" class="text-gray-400">No goals yet.</div>
         </div>
       </div>
-      <div v-if="goals.length === 0" class="text-gray-400">No goals yet.</div>
     </div>
   `,
   setup() {
@@ -138,9 +142,8 @@ export default {
     }
 
     Vue.onUnmounted(() => {
-        cleanup();
-      });
-
+      cleanup();
+    });
 
     return { goals, newGoal, editingGoal, debounceAddGoal, handleGoalInput, removeGoal, startDrag, isDragging, draggedIndex, goalsContainer, dragIndicator, preventDefaultIfDragging };
   },

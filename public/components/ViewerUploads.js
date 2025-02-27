@@ -1,11 +1,17 @@
-// components/Uploads.js
+// components/ViewerUploads.js
 import { useDocuments } from '../composables/useDocuments.js';
 import { useRealTime } from '../composables/useRealTime.js';
 
 export default {
-  name: 'Uploads',
+  name: 'ViewerUploads',
+  props: {
+    updateTab: {
+      type: Function,
+      required: true,
+    },
+  },
   template: `
-    <div class="p-2 h-full overflow-y-auto">
+    <div class="h-full overflow-y-auto p-2">
       <h3 class="text-lg font-semibold text-purple-400 mb-4">Uploads</h3>
       
       <!-- Drag and Drop Area with Upload Button -->
@@ -36,19 +42,32 @@ export default {
         <div 
           v-for="doc in documents" 
           :key="doc.id" 
-          class="flex items-center justify-between p-2 bg-gray-700 rounded-lg hover:bg-gray-600 cursor-pointer"
-          @click="selectDocument(doc)"
+          class="flex items-center justify-between p-2 bg-gray-700 rounded-lg hover:bg-gray-600 cursor-pointer w-full overflow-x-hidden"
+          @click="selectDocument(doc, $event)"
         >
-          <div class="flex items-center space-x-2">
+          <div class="flex items-center space-x-2 flex-1 min-w-0">
             <i :class="getFileIcon(doc.name)"></i>
+            <span v-if="!editingDocId || editingDocId !== doc.id" class="text-white truncate flex-1 min-w-0">
+              {{ doc.name }}
+            </span>
             <input
-              v-model="doc.name"
-              @change="renameDocument(doc.id, $event.target.value)"
-              class="bg-transparent text-white border-b border-gray-500 focus:border-purple-400 outline-none w-32"
+              v-else
+              v-model="editName"
+              @keypress.enter="finishEditing(doc.id)"
+              @blur="finishEditing(doc.id)"
+              class="bg-transparent text-white border-b border-gray-500 focus:border-purple-400 outline-none flex-1 min-w-0"
               placeholder="Rename document"
+              ref="editInput"
             />
+            <button 
+              v-if="!editingDocId || editingDocId !== doc.id" 
+              @click.stop="startEditing(doc)" 
+              class="text-gray-400 hover:text-purple-400 ml-2 flex-shrink-0"
+            >
+              <i class="pi pi-pencil"></i>
+            </button>
           </div>
-          <button @click.stop="removeDocumentLocal(doc.id)" class="text-red-400 hover:text-red-300">
+          <button @click.stop="removeDocumentLocal(doc.id)" class="text-red-400 hover:text-red-300 flex-shrink-0">
             <i class="pi pi-times"></i>
           </button>
         </div>
@@ -56,13 +75,15 @@ export default {
       <div v-else class="text-gray-400 text-center">No documents yet.</div>
     </div>
   `,
-  setup() {
+  setup(props) {
     const { documents, addDocument, removeDocument, setSelectedDocument, updateDocument } = useDocuments();
     const { emit } = useRealTime();
     const dropZone = Vue.ref(null);
     const fileInput = Vue.ref(null);
+    const editingDocId = Vue.ref(null);
+    const editName = Vue.ref('');
+    const editInput = Vue.ref(null);
 
-    // Handle drag-and-drop events
     function onDragOver(event) {
       event.preventDefault();
       dropZone.value.classList.add('border-purple-400', 'bg-gray-600');
@@ -80,47 +101,60 @@ export default {
       await handleFiles(files);
     }
 
-    // Handle file input click/upload
     async function handleFileUpload(event) {
       const files = event.target.files;
       await handleFiles(files);
-      fileInput.value.value = ''; // Reset input
+      fileInput.value.value = '';
     }
 
-    // Trigger file input click
     function triggerFileUpload() {
       fileInput.value.click();
     }
 
-    // Delegate file handling to useDocuments
     async function handleFiles(files) {
       for (const file of Array.from(files)) {
         await addDocument(file);
       }
     }
 
-    // Select document and set it in useDocuments
-    function selectDocument(doc) {
-      setSelectedDocument(doc);
-    }
-
-    // Rename document and sync with others
-    function renameDocument(docId, newName) {
-      if (newName.trim()) {
-        updateDocument(docId, newName.trim()); // Use updateDocument from useDocuments
+    function selectDocument(doc, event) {
+      if (!event.target.closest('.pi-pencil') && !event.target.closest('.pi-times') && !editingDocId.value) {
+        setSelectedDocument(doc);
+        console.log('ViewerUploads calling updateTab:', { tab: 'Documents', subTab: 'Viewer' });
+        props.updateTab('Documents', 'Viewer'); // Directly update tab
+        emit('update-tab', { tab: 'Documents', subTab: 'Viewer' }); // Still emit for other clients
       }
     }
 
-    // Remove document locally and sync
-    function removeDocumentLocal(docId) {
-      removeDocument(docId); // Use removeDocument from useDocuments
+    function startEditing(doc) {
+      editingDocId.value = doc.id;
+      editName.value = doc.name;
+      Vue.nextTick(() => {
+        if (editInput.value && editInput.value[0]) {
+          editInput.value[0].focus();
+        }
+      });
     }
 
-    // Get file icon based on name (fallback if type is missing)
+    function finishEditing(docId) {
+      if (editName.value.trim()) {
+        updateDocument(docId, editName.value.trim());
+      }
+      editingDocId.value = null;
+      editName.value = '';
+    }
+
+    function removeDocumentLocal(id) {
+      removeDocument(id);
+      if (editingDocId.value === id) {
+        editingDocId.value = null;
+      }
+    }
+
     function getFileIcon(fileName) {
       const extension = fileName.includes('.') 
         ? fileName.split('.').pop().toLowerCase() 
-        : 'default'; // Fallback to 'default' if no extension
+        : 'default';
       const iconMap = {
         js: 'pi pi-code',
         jsx: 'pi pi-code',
@@ -158,13 +192,17 @@ export default {
       documents,
       dropZone,
       fileInput,
+      editingDocId,
+      editName,
+      editInput,
       onDragOver,
       onDragLeave,
       onDrop,
       handleFileUpload,
       triggerFileUpload,
       selectDocument,
-      renameDocument,
+      startEditing,
+      finishEditing,
       removeDocumentLocal,
       getFileIcon,
     };

@@ -2,7 +2,7 @@
 import { useRealTime } from '../composables/useRealTime.js';
 import { useHistory } from '../composables/useHistory.js';
 import SessionSetup from './SessionSetup.js';
-import Uploads from './Uploads.js';
+import ViewerUploads from './ViewerUploads.js';
 import Viewer from './Viewer.js';
 import ChatPanel from './ChatPanel.js';
 import { useAgents } from '../composables/useAgents.js';
@@ -16,7 +16,7 @@ import { useTranscripts } from '../composables/useTranscripts.js';
 
 export default {
   name: 'Binder',
-  components: { SessionSetup, Uploads, Viewer, ChatPanel },
+  components: { SessionSetup, ViewerUploads, Viewer, ChatPanel },
   template: `
     <div class="flex flex-col min-h-screen bg-gray-950 text-white p-2 overflow-x-hidden" style="height: 100vh;">
       <session-setup v-if="!sessionReady" @setup-complete="handleSetupComplete" />
@@ -34,9 +34,6 @@ export default {
             <button @click="toggleRoomLock" class="p-2 text-white hover:text-purple-400" :class="{ 'text-green-500': !isRoomLocked, 'text-red-500': isRoomLocked }" title="Toggle Room Lock">
               <i v-if="!isRoomLocked" class="pi pi-unlock text-xl"></i>
               <i v-if="isRoomLocked" class="pi pi-lock text-xl"></i>
-            </button>
-            <button @click="uploadToCloud" class="p-2 text-white hover:text-purple-400" title="Upload to Cloud">
-              <i class="pi pi-cloud-upload text-xl"></i>
             </button>
             <button @click="downloadFromCloud" class="p-2 text-white hover:text-purple-400" title="Download from Cloud">
               <i class="pi pi-cloud-download text-xl"></i>
@@ -58,8 +55,6 @@ export default {
               {{ tab }}
             </button>
           </div>
-
-          <!-- Chat Icon (Visible on desktop, hidden on mobile) -->
           <button
             @click="toggleChat"
             class="ml-auto px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors hidden sm:inline-flex"
@@ -86,13 +81,17 @@ export default {
             </div>
           </div>
 
-          <!-- Viewer (Keep all components mounted with v-show) -->
-          <div class="flex-1 overflow-y-auto" :style="{ maxHeight: 'calc(100vh - 180px)' }">
+          <!-- Viewer -->
+          <div 
+            class="flex-1 overflow-y-auto" 
+            :style="{ maxHeight: activeTab === 'Documents' ? 'calc(100vh - 300px)' : 'calc(100vh - 200px)' }"
+          >
             <viewer
               :active-tab="activeTab"
               :active-document-sub-tab="activeDocumentSubTab"
+              :update-tab="updateActiveTab"
               v-show="true"
-              class="w-full"
+              class="w-full h-full"
             />
           </div>
 
@@ -150,9 +149,8 @@ export default {
 
     const participantCount = Vue.computed(() => Object.keys(activeUsers.value || {}).length);
 
-    // Timeout ID for delayed disconnection
     let disconnectTimeout = null;
-    const DISCONNECT_DELAY = 2 * 1000; // 2 seconds milliseconds
+    const DISCONNECT_DELAY = 2 * 1000;
 
     function handleSetupComplete({ channel, name }) {
       if (!isValidChannelName(channel)) {
@@ -183,15 +181,6 @@ export default {
       emit('room-lock-toggle', { channelName: channelName.value, locked: isRoomLocked.value });
     }
 
-    function uploadToCloud() {
-      if (isConnected.value && channelName.value) {
-        emit('upload-to-cloud', { channelName: channelName.value, userUuid: userUuid.value });
-      } else {
-        console.error('Cannot upload to cloud: Not connected or no channel name');
-        alert('Please ensure you are connected to a channel before uploading to the cloud.');
-      }
-    }
-
     function downloadFromCloud() {
       const input = document.createElement('input');
       input.type = 'file';
@@ -216,7 +205,6 @@ export default {
 
     function handleVisibilityChange() {
       if (document.hidden) {
-        // Tab is hidden, start the disconnect timer
         if (isConnected.value && channelName.value) {
           disconnectTimeout = setTimeout(() => {
             const updatedUsers = { ...activeUsers.value };
@@ -228,7 +216,6 @@ export default {
           }, DISCONNECT_DELAY);
         }
       } else {
-        // Tab is visible, cancel any pending disconnect and reconnect if needed
         clearTimeout(disconnectTimeout);
         if (!isConnected.value && channelName.value && displayName.value) {
           if (!isValidChannelName(channelName.value)) {
@@ -241,9 +228,11 @@ export default {
       }
     }
 
-    function updateActiveTab(tab) {
+    function updateActiveTab(tab, subTab = null) {
       activeTab.value = tab;
-      if (tab !== 'Documents') {
+      if (tab === 'Documents' && subTab) {
+        activeDocumentSubTab.value = subTab;
+      } else if (tab !== 'Documents') {
         activeDocumentSubTab.value = 'Uploads';
       }
       emit('update-tab', { tab: tab, subTab: tab === 'Documents' ? activeDocumentSubTab.value : null });
@@ -268,13 +257,20 @@ export default {
       return /^[a-zA-Z0-9_]+$/.test(channelName);
     }
 
-    on('user-list', (users) => {
-      activeUsers.value = users || {};
+    on('update-tab', (data) => {
+      console.log('Binder received update-tab:', data);
+      if (data.tab) {
+        activeTab.value = data.tab;
+        if (data.tab === 'Documents' && data.subTab) {
+          activeDocumentSubTab.value = data.subTab;
+        } else if (data.tab !== 'Documents') {
+          activeDocumentSubTab.value = 'Uploads';
+        }
+      }
     });
 
-    on('upload-to-cloud-success', (data) => {
-      console.log('Upload to cloud successful:', data.message);
-      const history = gatherLocalHistory();
+    on('user-list', (users) => {
+      activeUsers.value = users || {};
     });
 
     on('error', (errorData) => {
@@ -308,8 +304,8 @@ export default {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('resize', updateIsMobile);
       clearTimeout(disconnectTimeout);
+      off('update-tab');
       off('user-list');
-      off('upload-to-cloud-success');
       off('error');
       off('room-lock-toggle');
       cleanupAgents();
@@ -337,7 +333,6 @@ export default {
       handleSetupComplete,
       resetSession,
       toggleRoomLock,
-      uploadToCloud,
       downloadFromCloud,
       sessionInfo,
       isConnected,

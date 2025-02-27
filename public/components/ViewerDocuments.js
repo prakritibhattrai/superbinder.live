@@ -19,19 +19,10 @@ export default {
       </div>
 
       <!-- Document and Search Results -->
-      <div class="flex-1 overflow-auto p-4">
-        <!-- Document View -->
-        <div v-if="selectedDocument && !searchResults.length" class="bg-gray-700 p-4 rounded-lg">
-          <div class="flex justify-between items-center mb-2">
-            <span class="text-gray-300 font-semibold">{{ selectedDocument.name }}</span>
-            <button
-              @click="renameDocument"
-              class="py-1 px-3 bg-gray-600 hover:bg-gray-500 text-white rounded-lg"
-            >
-              Rename
-            </button>
-          </div>
-          <div ref="docContent" v-html="renderContent(selectedDocument.processedContent)" class="prose text-gray-300"></div>
+        <div class=" " v-if = "selectedDocument">
+          <div class=" ">
+          
+ 
           <button
             v-if="selectedText"
             @click="clipSelectedText"
@@ -39,6 +30,16 @@ export default {
           >
             Clip Selected
           </button>
+
+          </div>
+        </div>
+
+      <div class="flex-1 overflow-auto p-4">
+        <!-- Document View -->
+        <div v-if="selectedDocument && !searchResults.length" class="bg-gray-700 p-4 rounded-lg">
+
+          <div ref="docContent" v-html="renderContent(selectedDocument.processedContent)" class="prose text-gray-300"></div>
+
         </div>
 
         <!-- Search Results -->
@@ -57,13 +58,13 @@ export default {
               <div v-html="highlightMatch(result.segment)" class="text-gray-300"></div>
               <div class="flex gap-2 mt-2">
                 <button
-                  @click="viewFullDoc(result.documentId, result.segment)"
+                  @click="viewFullDoc(result.id, result.segment)"
                   class="py-1 px-3 bg-gray-600 hover:bg-gray-500 text-white rounded-lg"
                 >
                   View Full
                 </button>
                 <button
-                  @click="addClip(result.segment, result.documentId)"
+                  @click="addClip(result.segment, result.id)"
                   class="py-1 px-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg flex items-center"
                 >
                   <i class="pi pi-cut mr-2"></i> Clip

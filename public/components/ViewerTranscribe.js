@@ -6,7 +6,7 @@ export default {
   name: 'ViewerTranscribe',
   template: `
     <div class="h-full flex flex-col overflow-hidden p-4">
-      <button class="py-2 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg">Record</button>
+      <button class="py-2 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg">Record (Pending)</button>
       <div class="mt-4 space-y-4 text-gray-300">
         <div v-for="sentence in transcriptions" :key="sentence.id" class="p-2 bg-gray-700 rounded-lg">
           <p>{{ sentence.text }}</p>
